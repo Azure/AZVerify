@@ -1,0 +1,109 @@
+<mxfile>
+  <diagram name="Architecture Overview" id="overview">
+    <mxGraphModel dx="0" dy="0" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1400" pageHeight="780" math="0" shadow="0">
+      <root>
+        <mxCell id="0"/>
+        <mxCell id="1" parent="0"/>
+        <mxCell id="rg-secure-webapp" value="rg-secure-webapp" style="container=1;collapsible=0;pointerEvents=0;rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;verticalAlign=top;fontStyle=1;fontSize=14;" vertex="1" parent="1">
+          <mxGeometry x="20" y="10" width="960" height="690" as="geometry"/>
+        </mxCell>
+        <mxCell id="rg-secure-webapp-icon" style="aspect=fixed;html=1;points=[];align=center;image;resizable=0;image=img/lib/azure2/general/Resource_Groups.svg;" vertex="1" parent="rg-secure-webapp">
+          <mxGeometry x="10" y="10" width="30" height="30" as="geometry"/>
+        </mxCell>
+        <mxCell id="dnsz-public" value="secure-webapp.example.com" style="aspect=fixed;html=1;points=[];align=center;image;resizable=0;image=img/lib/azure2/networking/DNS_Zones.svg;verticalLabelPosition=bottom;verticalAlign=top;" vertex="1" parent="rg-secure-webapp">
+          <mxGeometry x="30" y="50" width="50" height="50" as="geometry"/>
+        </mxCell>
+        <mxCell id="pip-appgw" value="pip-appgw" style="aspect=fixed;html=1;points=[];align=center;image;resizable=0;image=img/lib/azure2/networking/Public_IP_Addresses.svg;verticalLabelPosition=bottom;verticalAlign=top;" vertex="1" parent="rg-secure-webapp">
+          <mxGeometry x="30" y="160" width="50" height="50" as="geometry"/>
+        </mxCell>
+        <mxCell id="vnet-secure" value="vnet-secure" style="container=1;collapsible=0;pointerEvents=0;rounded=1;whiteSpace=wrap;html=1;dashed=1;dashPattern=5 5;fillColor=#dae8fc;strokeColor=#6c8ebf;verticalAlign=top;fontStyle=1;fontSize=14;" vertex="1" parent="rg-secure-webapp">
+          <mxGeometry x="170" y="40" width="390" height="510" as="geometry"/>
+        </mxCell>
+        <mxCell id="vnet-secure-icon" style="aspect=fixed;html=1;points=[];align=center;image;resizable=0;image=img/lib/azure2/networking/Virtual_Networks.svg;" vertex="1" parent="vnet-secure">
+          <mxGeometry x="10" y="10" width="30" height="30" as="geometry"/>
+        </mxCell>
+        <mxCell id="snet-appgw" value="snet-appgw" style="container=1;collapsible=0;pointerEvents=0;rounded=1;whiteSpace=wrap;html=1;dashed=1;dashPattern=2 2;fillColor=#e1d5e7;strokeColor=#9673a6;verticalAlign=top;fontStyle=1;" vertex="1" parent="vnet-secure">
+          <mxGeometry x="15" y="50" width="360" height="140" as="geometry"/>
+        </mxCell>
+        <mxCell id="snet-appgw-icon" style="aspect=fixed;html=1;points=[];align=center;image;resizable=0;image=img/lib/azure2/networking/Subnet.svg;" vertex="1" parent="snet-appgw">
+          <mxGeometry x="10" y="10" width="30" height="30" as="geometry"/>
+        </mxCell>
+        <mxCell id="appgw-waf" value="appgw-waf (WAF_v2)" style="aspect=fixed;html=1;points=[];align=center;image;resizable=0;image=img/lib/azure2/networking/Application_Gateways.svg;verticalLabelPosition=bottom;verticalAlign=top;" vertex="1" parent="snet-appgw">
+          <mxGeometry x="155" y="50" width="50" height="50" as="geometry"/>
+        </mxCell>
+        <mxCell id="snet-integration" value="snet-integration (delegated: Microsoft.Web/serverFarms)" style="container=1;collapsible=0;pointerEvents=0;rounded=1;whiteSpace=wrap;html=1;dashed=1;dashPattern=2 2;fillColor=#e1d5e7;strokeColor=#9673a6;verticalAlign=top;fontStyle=1;" vertex="1" parent="vnet-secure">
+          <mxGeometry x="15" y="210" width="360" height="90" as="geometry"/>
+        </mxCell>
+        <mxCell id="snet-integration-icon" style="aspect=fixed;html=1;points=[];align=center;image;resizable=0;image=img/lib/azure2/networking/Subnet.svg;" vertex="1" parent="snet-integration">
+          <mxGeometry x="10" y="10" width="30" height="30" as="geometry"/>
+        </mxCell>
+        <mxCell id="snet-privatelink" value="snet-privatelink" style="container=1;collapsible=0;pointerEvents=0;rounded=1;whiteSpace=wrap;html=1;dashed=1;dashPattern=2 2;fillColor=#e1d5e7;strokeColor=#9673a6;verticalAlign=top;fontStyle=1;" vertex="1" parent="vnet-secure">
+          <mxGeometry x="15" y="320" width="360" height="160" as="geometry"/>
+        </mxCell>
+        <mxCell id="snet-privatelink-icon" style="aspect=fixed;html=1;points=[];align=center;image;resizable=0;image=img/lib/azure2/networking/Subnet.svg;" vertex="1" parent="snet-privatelink">
+          <mxGeometry x="10" y="10" width="30" height="30" as="geometry"/>
+        </mxCell>
+        <mxCell id="pe-sql" value="pe-sql" style="aspect=fixed;html=1;points=[];align=center;image;resizable=0;image=img/lib/azure2/networking/Private_Endpoint.svg;verticalLabelPosition=bottom;verticalAlign=top;" vertex="1" parent="snet-privatelink">
+          <mxGeometry x="50" y="55" width="50" height="50" as="geometry"/>
+        </mxCell>
+        <mxCell id="pdnsz-sql" value="privatelink.database.windows.net" style="aspect=fixed;html=1;points=[];align=center;image;resizable=0;image=img/lib/azure2/networking/DNS_Zones.svg;verticalLabelPosition=bottom;verticalAlign=top;" vertex="1" parent="snet-privatelink">
+          <mxGeometry x="220" y="55" width="50" height="50" as="geometry"/>
+        </mxCell>
+        <mxCell id="asp-webapp" value="asp-webapp" style="aspect=fixed;html=1;points=[];align=center;image;resizable=0;image=img/lib/azure2/app_services/App_Service_Plans.svg;verticalLabelPosition=bottom;verticalAlign=top;" vertex="1" parent="rg-secure-webapp">
+          <mxGeometry x="640" y="170" width="50" height="50" as="geometry"/>
+        </mxCell>
+        <mxCell id="app-webapp" value="app-webapp" style="aspect=fixed;html=1;points=[];align=center;image;resizable=0;image=img/lib/azure2/app_services/App_Services.svg;verticalLabelPosition=bottom;verticalAlign=top;" vertex="1" parent="rg-secure-webapp">
+          <mxGeometry x="640" y="320" width="50" height="50" as="geometry"/>
+        </mxCell>
+        <mxCell id="sql-server" value="sql-secure" style="aspect=fixed;html=1;points=[];align=center;image;resizable=0;image=img/lib/azure2/databases/SQL_Server.svg;verticalLabelPosition=bottom;verticalAlign=top;" vertex="1" parent="rg-secure-webapp">
+          <mxGeometry x="340" y="600" width="50" height="50" as="geometry"/>
+        </mxCell>
+        <mxCell id="sqldb-webapp" value="sqldb-webapp" style="aspect=fixed;html=1;points=[];align=center;image;resizable=0;image=img/lib/azure2/databases/SQL_Database.svg;verticalLabelPosition=bottom;verticalAlign=top;" vertex="1" parent="rg-secure-webapp">
+          <mxGeometry x="480" y="600" width="50" height="50" as="geometry"/>
+        </mxCell>
+        <mxCell id="kv-secure" value="kv-secure" style="aspect=fixed;html=1;points=[];align=center;image;resizable=0;image=img/lib/azure2/security/Key_Vaults.svg;verticalLabelPosition=bottom;verticalAlign=top;" vertex="1" parent="rg-secure-webapp">
+          <mxGeometry x="870" y="200" width="50" height="50" as="geometry"/>
+        </mxCell>
+        <mxCell id="appi-webapp" value="appi-webapp" style="aspect=fixed;html=1;points=[];align=center;image;resizable=0;image=img/lib/azure2/devops/Application_Insights.svg;verticalLabelPosition=bottom;verticalAlign=top;" vertex="1" parent="rg-secure-webapp">
+          <mxGeometry x="870" y="360" width="50" height="50" as="geometry"/>
+        </mxCell>
+        <mxCell id="edge-dns-pip" value="DNS record" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#0078D4;strokeWidth=2;endArrow=block;endFill=1;" edge="1" parent="1" source="dnsz-public" target="pip-appgw">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="edge-pip-appgw" value="public IP" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#0078D4;strokeWidth=2;endArrow=block;endFill=1;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="1" source="pip-appgw" target="appgw-waf">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="edge-appgw-app" value="routes traffic" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#0078D4;strokeWidth=2;endArrow=block;endFill=1;exitX=1;exitY=0.75;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="1" source="appgw-waf" target="app-webapp">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="edge-asp-app" value="hosts" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#999999;strokeWidth=1;dashed=1;endArrow=open;endFill=0;" edge="1" parent="1" source="asp-webapp" target="app-webapp">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="edge-app-vnetint" value="VNet integration" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#00A4EF;strokeWidth=2;dashed=1;exitX=0;exitY=0.3;exitDx=0;exitDy=0;entryX=1;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="1" source="app-webapp" target="snet-integration">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="edge-app-pe" value="private connection" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#0078D4;strokeWidth=2;endArrow=block;endFill=1;exitX=0;exitY=0.7;exitDx=0;exitDy=0;entryX=1;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="1" source="app-webapp" target="pe-sql">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="edge-pe-sql" value="private link" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#E81123;strokeWidth=2;endArrow=block;endFill=1;" edge="1" parent="1" source="pe-sql" target="sql-server">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="edge-app-kv" value="reads secrets" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#0078D4;strokeWidth=2;endArrow=block;endFill=1;exitX=1;exitY=0.25;exitDx=0;exitDy=0;entryX=0;entryY=0.75;entryDx=0;entryDy=0;" edge="1" parent="1" source="app-webapp" target="kv-secure">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="edge-appgw-kv" value="SSL cert" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#0078D4;strokeWidth=2;endArrow=block;endFill=1;exitX=1;exitY=0;exitDx=0;exitDy=0;entryX=0;entryY=0.25;entryDx=0;entryDy=0;" edge="1" parent="1" source="appgw-waf" target="kv-secure">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="edge-app-appi" value="telemetry" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#0078D4;strokeWidth=2;endArrow=block;endFill=1;exitX=1;exitY=0.75;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="1" source="app-webapp" target="appi-webapp">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="edge-pdnsz-pe" value="DNS resolution" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#0078D4;strokeWidth=2;endArrow=block;endFill=1;exitX=0;exitY=0.5;exitDx=0;exitDy=0;entryX=1;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="1" source="pdnsz-sql" target="pe-sql">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="edge-sql-sqldb" value="hosts" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#999999;strokeWidth=1;dashed=1;endArrow=open;endFill=0;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="1" source="sql-server" target="sqldb-webapp">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

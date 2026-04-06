@@ -1,0 +1,49 @@
+<mxfile>
+  <diagram name="Architecture Overview" id="overview">
+    <mxGraphModel dx="0" dy="0" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1400" pageHeight="780" math="0" shadow="0">
+      <root>
+        <mxCell id="0"/>
+        <mxCell id="1" parent="0"/>
+        <mxCell id="rg" value="Contoso-Voting" style="container=1;collapsible=0;pointerEvents=0;rounded=1;whiteSpace=wrap;html=1;verticalAlign=top;fontStyle=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=14;" vertex="1" parent="1">
+          <mxGeometry x="20" y="20" width="1320" height="700" as="geometry"/>
+        </mxCell>
+        <mxCell id="rg-icon" style="aspect=fixed;html=1;points=[];align=center;image;resizable=0;image=img/lib/azure2/general/Resource_Groups.svg;" vertex="1" parent="rg">
+          <mxGeometry x="10" y="10" width="30" height="30" as="geometry"/>
+        </mxCell>
+        <mxCell id="asp" value="asp-contoso-voting-linux" style="aspect=fixed;html=1;points=[];align=center;image;resizable=0;image=img/lib/azure2/app_services/App_Service_Plans.svg;verticalLabelPosition=bottom;verticalAlign=top;" vertex="1" parent="rg">
+          <mxGeometry x="590" y="100" width="50" height="50" as="geometry"/>
+        </mxCell>
+        <mxCell id="app-service" value="contoso-voting" style="aspect=fixed;html=1;points=[];align=center;image;resizable=0;image=img/lib/azure2/app_services/App_Services.svg;verticalLabelPosition=bottom;verticalAlign=top;" vertex="1" parent="rg">
+          <mxGeometry x="590" y="320" width="50" height="50" as="geometry"/>
+        </mxCell>
+        <mxCell id="key-vault" value="kv-contoso-voting" style="aspect=fixed;html=1;points=[];align=center;image;resizable=0;image=img/lib/azure2/security/Key_Vaults.svg;verticalLabelPosition=bottom;verticalAlign=top;" vertex="1" parent="rg">
+          <mxGeometry x="150" y="250" width="50" height="50" as="geometry"/>
+        </mxCell>
+        <mxCell id="managed-identity" value="deploy-uami" style="aspect=fixed;html=1;points=[];align=center;image;resizable=0;image=img/lib/azure2/identity/Managed_Identities.svg;verticalLabelPosition=bottom;verticalAlign=top;" vertex="1" parent="rg">
+          <mxGeometry x="150" y="460" width="50" height="50" as="geometry"/>
+        </mxCell>
+        <mxCell id="storage" value="contoso-voting" style="aspect=fixed;html=1;points=[];align=center;image;resizable=0;image=img/lib/azure2/storage/Storage_Accounts.svg;verticalLabelPosition=bottom;verticalAlign=top;" vertex="1" parent="rg">
+          <mxGeometry x="1050" y="250" width="50" height="50" as="geometry"/>
+        </mxCell>
+        <mxCell id="eventgrid" value="contoso-voting (Event Grid)" style="aspect=fixed;html=1;points=[];align=center;image;resizable=0;image=img/lib/azure2/integration/System_Topic.svg;verticalLabelPosition=bottom;verticalAlign=top;" vertex="1" parent="rg">
+          <mxGeometry x="1050" y="460" width="50" height="50" as="geometry"/>
+        </mxCell>
+        <mxCell id="edge-app-asp" value="hosted on" style="rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#999999;strokeWidth=1;dashed=1;endArrow=open;endFill=0;" edge="1" parent="1" source="app-service" target="asp">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="edge-eventgrid-storage" value="monitors" style="rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#0078D4;strokeWidth=2;endArrow=block;endFill=1;" edge="1" parent="1" source="eventgrid" target="storage">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="edge-msi-app" value="Website Contributor" style="rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#E81123;strokeWidth=2;endArrow=block;endFill=1;" edge="1" parent="1" source="managed-identity" target="app-service">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="edge-app-kv" value="reads secrets (inferred)" style="rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#0078D4;strokeWidth=2;endArrow=block;endFill=1;" edge="1" parent="1" source="app-service" target="key-vault">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="edge-app-storage" value="uses storage (inferred)" style="rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#0078D4;strokeWidth=2;endArrow=block;endFill=1;" edge="1" parent="1" source="app-service" target="storage">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

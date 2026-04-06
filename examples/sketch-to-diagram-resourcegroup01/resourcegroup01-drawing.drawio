@@ -1,0 +1,58 @@
+<mxfile>
+  <diagram name="Architecture Overview" id="overview">
+    <mxGraphModel dx="0" dy="0" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1100" pageHeight="780" math="0" shadow="0">
+      <root>
+        <mxCell id="0"/>
+        <mxCell id="1" parent="0"/>
+        <mxCell id="rg-01" value="ResourceGroup01" style="container=1;collapsible=0;pointerEvents=0;rounded=1;whiteSpace=wrap;html=1;verticalAlign=top;fontStyle=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=14;" vertex="1" parent="1">
+          <mxGeometry x="20" y="20" width="1060" height="730" as="geometry"/>
+        </mxCell>
+        <mxCell id="rg-01-icon" style="aspect=fixed;html=1;points=[];align=center;image;resizable=0;image=img/lib/azure2/general/Resource_Groups.svg;" vertex="1" parent="rg-01">
+          <mxGeometry x="10" y="10" width="30" height="30" as="geometry"/>
+        </mxCell>
+        <mxCell id="webapp" value="webapp" style="aspect=fixed;html=1;points=[];align=center;image;resizable=0;image=img/lib/azure2/app_services/App_Services.svg;verticalLabelPosition=bottom;verticalAlign=top;" vertex="1" parent="rg-01">
+          <mxGeometry x="70" y="260" width="50" height="50" as="geometry"/>
+        </mxCell>
+        <mxCell id="asp-01" value="App-Service-Plan" style="aspect=fixed;html=1;points=[];align=center;image;resizable=0;image=img/lib/azure2/app_services/App_Service_Plans.svg;verticalLabelPosition=bottom;verticalAlign=top;" vertex="1" parent="rg-01">
+          <mxGeometry x="70" y="440" width="50" height="50" as="geometry"/>
+        </mxCell>
+        <mxCell id="vnet-01" value="VNET-01" style="container=1;collapsible=0;pointerEvents=0;rounded=1;whiteSpace=wrap;html=1;verticalAlign=top;fontStyle=1;fillColor=#dae8fc;strokeColor=#6c8ebf;dashed=1;dashPattern=5 5;fontSize=14;" vertex="1" parent="rg-01">
+          <mxGeometry x="260" y="40" width="760" height="660" as="geometry"/>
+        </mxCell>
+        <mxCell id="vnet-01-icon" style="aspect=fixed;html=1;points=[];align=center;image;resizable=0;image=img/lib/azure2/networking/Virtual_Networks.svg;" vertex="1" parent="vnet-01">
+          <mxGeometry x="10" y="10" width="30" height="30" as="geometry"/>
+        </mxCell>
+        <mxCell id="subnet-01" value="Subnet-01" style="container=1;collapsible=0;pointerEvents=0;rounded=1;whiteSpace=wrap;html=1;verticalAlign=top;fontStyle=1;fillColor=#e1d5e7;strokeColor=#9673a6;dashed=1;dashPattern=2 2;" vertex="1" parent="vnet-01">
+          <mxGeometry x="30" y="60" width="450" height="230" as="geometry"/>
+        </mxCell>
+        <mxCell id="subnet-01-icon" style="aspect=fixed;html=1;points=[];align=center;image;resizable=0;image=img/lib/azure2/networking/Subnet.svg;" vertex="1" parent="subnet-01">
+          <mxGeometry x="10" y="10" width="30" height="30" as="geometry"/>
+        </mxCell>
+        <mxCell id="vm-01" value="VM01" style="aspect=fixed;html=1;points=[];align=center;image;resizable=0;image=img/lib/azure2/compute/Virtual_Machine.svg;verticalLabelPosition=bottom;verticalAlign=top;" vertex="1" parent="subnet-01">
+          <mxGeometry x="60" y="80" width="50" height="50" as="geometry"/>
+        </mxCell>
+        <mxCell id="nic-01" value="NIC-01" style="aspect=fixed;html=1;points=[];align=center;image;resizable=0;image=img/lib/azure2/networking/Network_Interfaces.svg;verticalLabelPosition=bottom;verticalAlign=top;" vertex="1" parent="subnet-01">
+          <mxGeometry x="260" y="80" width="50" height="50" as="geometry"/>
+        </mxCell>
+        <mxCell id="subnet-02" value="Subnet-02" style="container=1;collapsible=0;pointerEvents=0;rounded=1;whiteSpace=wrap;html=1;verticalAlign=top;fontStyle=1;fillColor=#e1d5e7;strokeColor=#9673a6;dashed=1;dashPattern=2 2;" vertex="1" parent="vnet-01">
+          <mxGeometry x="30" y="360" width="300" height="230" as="geometry"/>
+        </mxCell>
+        <mxCell id="subnet-02-icon" style="aspect=fixed;html=1;points=[];align=center;image;resizable=0;image=img/lib/azure2/networking/Subnet.svg;" vertex="1" parent="subnet-02">
+          <mxGeometry x="10" y="10" width="30" height="30" as="geometry"/>
+        </mxCell>
+        <mxCell id="pe-webapp" value="pe-webapp" style="aspect=fixed;html=1;points=[];align=center;image;resizable=0;image=img/lib/azure2/networking/Private_Endpoint.svg;verticalLabelPosition=bottom;verticalAlign=top;" vertex="1" parent="subnet-02">
+          <mxGeometry x="60" y="80" width="50" height="50" as="geometry"/>
+        </mxCell>
+        <mxCell id="edge-vm-nic" value="uses" style="rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#999999;strokeWidth=1;dashed=1;endArrow=open;endFill=0;" edge="1" parent="1" source="vm-01" target="nic-01">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="edge-webapp-asp" value="hosted by" style="rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#999999;strokeWidth=1;dashed=1;endArrow=open;endFill=0;" edge="1" parent="1" source="webapp" target="asp-01">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="edge-webapp-pe" value="private link" style="rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#E81123;strokeWidth=2;endArrow=block;endFill=1;" edge="1" parent="1" source="webapp" target="pe-webapp">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>
