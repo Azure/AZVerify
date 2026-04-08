@@ -9,9 +9,11 @@ AzVerify gives GitHub Copilot the skills to connect them.
 
 ## Quick Start
 
-1. **Install MCP servers** — Configure [Draw.io MCP](https://mcp.draw.io/mcp) and [Azure MCP](https://github.com/microsoft/mcp/tree/main/servers/Azure.Mcp.Server) in VS Code (see [Getting Started](docs/getting-started.md))
-2. **Clone this repo** — `git clone https://github.com/Ba4bes/AzVerify.git`
-3. **Run a skill** — Open Copilot Chat and try:
+1. Sign in to GitHub Copilot Chat in VS Code (requires GitHub Copilot subscription) (or use the CopilotCLI, see [Getting Started](docs/getting-started.md))
+2. Install the [Draw.io VS Code extension](https://marketplace.visualstudio.com/items?itemName=hediet.vscode-drawio)
+3. For best results, Install MCP servers: [Draw.io MCP](https://mcp.draw.io/mcp) and [Azure MCP](https://github.com/microsoft/mcp/tree/main/servers/Azure.Mcp.Server) in VS Code
+4. Clone this repo: `git clone https://github.com/Ba4bes/AzVerify.git`
+5. Run a skill: Open Copilot Chat and try:
    ```text
    /azv-azure-to-diagram run Resource Group `<your-rg>`, Subscription `<your-sub-id>`
    ```
