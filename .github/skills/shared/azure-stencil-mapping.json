@@ -4,12 +4,13 @@
     "Microsoft.Web/* resources (App Services, App Service Plans, Function Apps) live in app_services/ — NOT in compute/ or web/",
     "App_Service_Plans.svg is in app_services/, NOT compute/. compute/ does not contain this file.",
     "There is no generic Event_Grid.svg. Use System_Topic.svg, Event_Grid_Topics.svg, or Event_Grid_Domains.svg depending on the sub-type.",
+    "Microsoft.AppConfiguration/configurationStores uses img/lib/mscae/App_Configuration.svg — this icon does NOT exist in the azure2 library. Using any azure2 path (e.g. management_governance/Management_Groups.svg or management_governance/App_Configurations.svg) produces an empty/broken icon.",
     "Always verify a path exists before using it. When in doubt, check https://github.com/jgraph/drawio/tree/dev/src/main/webapp/img/lib/azure2"
   ],
   "stencilLibrary": "azure2",
   "styleTemplate": "aspect=fixed;html=1;points=[];align=center;image;resizable=0;image={imagePath};",
   "iconNamingNotes": "Most icons use plural names (e.g., Virtual_Networks.svg, Load_Balancers.svg). The exceptions below use SINGULAR names — do not pluralize them. When unsure, check the draw.io azure2 stencil source at https://github.com/jgraph/drawio/tree/dev/src/main/webapp/img/lib/azure2",
-  "iconSizingNotes": "defaultWidth and defaultHeight define the mxCell bounding box. With imageAspect omitted (default), Draw.io preserves the SVG's natural aspect ratio within the cell — do NOT add imageAspect=0, which stretches the image. Always use the exact defaultWidth and defaultHeight from this mapping; never calculate or approximate icon dimensions yourself. Most azure2 icons are square; non-square entries list an explicit defaultHeight.",
+  "iconSizingNotes": "defaultWidth and defaultHeight define the mxCell bounding box. Do NOT add imageAspect=0 — it stretches non-square SVGs and distorts icons. For icons marked requiresImageAspect1=true (e.g. Application Insights), you MUST add imageAspect=1 to the style string to preserve the SVG's native non-square proportions. For all other icons, omit imageAspect entirely. Always use the exact defaultWidth and defaultHeight from this mapping; never calculate or approximate icon dimensions yourself. Most azure2 icons are square; non-square entries list an explicit defaultHeight.",
   "resourceTypes": {
     "_comment_singularExceptions": "These icons use SINGULAR names, breaking the usual plural pattern",
     "Microsoft.Compute/virtualMachines": {
@@ -127,7 +128,9 @@
       "imagePath": "img/lib/azure2/devops/Application_Insights.svg",
       "label": "Application Insights",
       "defaultWidth": 50,
-      "defaultHeight": 50
+      "defaultHeight": 50,
+      "requiresImageAspect1": true,
+      "note": "The Application_Insights.svg has a non-square native ratio. You MUST include imageAspect=1 in the style string. Omitting it or using imageAspect=0 will stretch/distort the icon into a malformed square shape."
     },
     "Microsoft.OperationalInsights/workspaces": {
       "imagePath": "img/lib/azure2/management_governance/Log_Analytics_Workspaces.svg",
@@ -153,6 +156,14 @@
       "note": "No dedicated Private DNS icon exists — uses DNS_Zones.svg as fallback",
       "defaultWidth": 50,
       "defaultHeight": 50
+    },
+
+    "Microsoft.AppConfiguration/configurationStores": {
+      "imagePath": "img/lib/mscae/App_Configuration.svg",
+      "label": "App Configuration",
+      "defaultWidth": 50,
+      "defaultHeight": 50,
+      "note": "LIBRARY: mscae — NOT azure2. This icon does not exist anywhere in the azure2 library. Using any azure2 path produces a broken/empty icon. The correct path is img/lib/mscae/App_Configuration.svg (singular, not plural)."
     },
 
     "_comment_containers": "Container elements with special rendering styles",

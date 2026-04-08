@@ -218,7 +218,7 @@ Build the Draw.io diagram XML from the resource model and inferred relationships
 Follow all diagram construction rules: canvas format, stencil mapping lookup, resource shapes and icon paths, container hierarchy (Resource Group → VNet → Subnet), edge rules, VNet Integration special case, and layout patterns (left-to-right flow, 2×2 zone grid, hub-and-spoke, semantic proximity, sizing).
 
 **Multi-page diagrams**: When the resource group includes networking subnets or monitoring resources, generate additional pages alongside "Architecture Overview":
-- **Network Topology page**: subnet-grid layout with subnet containers inside the VNet container. This page can exceed 1900px wide — it is detail-focused and engineers expect to pan.
+- **Network Topology page**: Follow the network topology layout rules in `.github/skills/shared/drawio-diagram-conventions.md` section 7e. Use a 3-column × N-row subnet grid grouped by function tier. Place supporting resources (ASPs, Managed Identities, WAF) inside their parent subnets — never in a scattered row at the bottom of the VNet. Add per-subnet route table icons instead of radiating edges from a central icon. Target `pageWidth="1800" pageHeight="1600"` — the page MUST NOT require horizontal scrolling on a 1920px display.
 - **Monitoring page**: single flat row of alert rules linked to their telemetry resources. `pageWidth="1800"` is sufficient.
 
 **8f. Generate the diagram**
