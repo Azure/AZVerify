@@ -17,7 +17,7 @@ pwsh .github/skills/shared/scripts/Select-AzureResources.ps1 -InputFile <resourc
 
 ## Parameters
 
-- `-InputFile` — optional path to the input resource model JSON; if omitted, reads JSON from stdin
+- `-InputFile` — required path to the input resource model JSON
 - `-Mode` — required filter mode: `diagram` or `bicep`
 - `-ExtraExclude` — optional additional resource names or type patterns to exclude
 - `-OutFile` — optional output path; otherwise JSON is written to stdout
@@ -35,38 +35,14 @@ pwsh .github/skills/shared/scripts/Select-AzureResources.ps1 -InputFile <resourc
 ## Notes
 
 - The script applies type rules, `hidden-*` tag rules, and any extra exclusions.
-- If `pwsh`/`powershell.exe` or the script is unavailable, continue with the fallback procedure.
+- If `pwsh` or the script is unavailable, use the inline fallback below.
 
+## Script Unavailable — Inline Fallback
 
-## Fallback
+If `pwsh` or the script cannot run, filter the resource model directly:
 
-Use this fallback procedure when `pwsh`/`powershell.exe` or the script is unavailable. If the script has already been invoked and failed, do not attempt the fallback.
-
-## Exclusion Table
-
-| Resource Type | Exclude for Diagrams | Exclude for Bicep | Rationale |
-|---|---|---|---|
-| `Microsoft.Network/networkWatchers` | ✅ | ✅ | Auto-created by Azure |
-| `Microsoft.Network/networkWatchers/connectionMonitors` | ✅ | ✅ | Auto-created child |
-| `Microsoft.AlertsManagement/smartDetectorAlertRules` | ✅ | ✅ | Auto-created |
-| `Microsoft.Portal/dashboards` | ✅ | ✅ | Portal UI artifact |
-| `microsoft.insights/autoscalesettings` (with `hidden-related:` tags) | ✅ | ✅ | Auto-created |
-| `Microsoft.Network/networkIntentPolicies` | ✅ | ✅ | Auto-created |
-| `Microsoft.Network/serviceEndpointPolicies` | ✅ | ✅ | Auto-created |
-| `Microsoft.Resources/deployments` | ✅ | ✅ | Deployment history |
-| `Microsoft.Resources/templateSpecs` | ✅ | ✅ | Template metadata |
-| `Microsoft.Authorization/*` | ✅ | ✅ | RBAC / Policy |
-| `Microsoft.Insights/components` (Application Insights) | ✅ | ❌ KEEP | Deployable; not architecture |
-| `Microsoft.Insights/actionGroups` | ✅ | ❌ KEEP | Deployable; not architecture |
-| `Microsoft.OperationalInsights/workspaces` (Log Analytics) | ✅ | ❌ KEEP | Deployable; not architecture |
-| `Microsoft.ManagedIdentity/userAssignedIdentities` | ❌ KEEP | ❌ KEEP | Explicitly created; used for resource authentication and RBAC |
-| Diagnostic settings (child resources) | ✅ | ❌ KEEP | Deployable as child |
-| Resources with ALL tag keys starting with `hidden-` | ✅ | ✅ | Fully Azure-managed |
-| Resources with `hidden-related:` tag prefixes | ✅ | Check individually | May be Azure-managed |
-
-## Application Rules
-
-1. Check resource type against the table (case-insensitive)
-2. Check if ALL tag keys start with `hidden-` (fully managed)
-3. Apply any user-specified exclusion filters
-4. Remove matching resources from the working list
+1. Read `.github/skills/shared/data/resource-filter-rules.json`.
+2. For each resource in the input model, exclude it when its `type` matches a rule (exact or wildcard `*`) whose `excludeForDiagram` (mode `diagram`) or `excludeForBicep` (mode `bicep`) is `true`. For a rule value of `"check individually"`, keep the resource but note it for review.
+3. Exclude any resource whose tag keys **all** start with `hidden-`.
+4. Exclude any resource matching a caller-supplied `-ExtraExclude` name or type prefix.
+5. Return the surviving resources as the filtered model (same shape as the input).

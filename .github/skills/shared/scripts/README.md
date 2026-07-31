@@ -4,11 +4,12 @@ These PowerShell scripts provide the reusable implementation behind AzVerify ski
 
 ## Prerequisites
 
+
 - **PowerShell 5.1 (`powershell.exe`) and up (`pwsh`)**
-- **Azure CLI (`az`)** for Azure-backed scripts
+- **Azure CLI (`az`)** or **Az PowerShell module** for Azure-backed scripts (either is sufficient; `Test-AzureAuth.ps1` probes Az PowerShell first and falls back to Azure CLI)
 - **Bicep CLI support** via `az bicep` or standalone `bicep` for Bicep parsing/build flows
 
-If a script cannot run because a prerequisite is missing, the calling skill should first check the availability of MCP servers. If they are not available, it should report the prerequisite and stop.
+If a script cannot run because a prerequisite is missing, the calling skill follows the inline fallback in the matching `procedures/` contract (or the Azure MCP fallback for authentication and discovery) instead of stopping.
 
 ## Script usage
 
