@@ -554,10 +554,6 @@ try {
         try {
             Write-ResourceModel -Model $model -OutFile $tempInput
             & (Join-Path $PSScriptRoot 'Select-AzureResources.ps1') -InputFile $tempInput -Mode $Mode -OutFile $tempOutput
-            if ($LASTEXITCODE -ne 0) {
-                throw 'Select-AzureResources.ps1 failed while filtering the discovered model.'
-            }
-
             $model = Get-Content -LiteralPath $tempOutput -Raw | ConvertFrom-Json -Depth 100
         }
         finally {
