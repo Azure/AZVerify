@@ -64,6 +64,18 @@ Scripts under `.github/skills/shared/scripts/` use the resource model above as t
 This contract keeps the script pipeline deterministic and chainable across the skills.
 
 
+## Script I/O Conventions
+
+Scripts under `.github/skills/shared/scripts/` use the resource model above as their shared JSON contract.
+
+- Parameters: each script accepts `-InputFile` and `-OutFile` when it reads/writes JSON, and uses `-Mode`, `-ResourceGroup`, or equivalent flags for its algorithm-specific behavior.
+- Standard output: scripts emit one JSON object to stdout (for example, `{"resources": [...]}`) and do not print extra prose on stdout.
+- Standard error: diagnostics, warnings, and hard-gate messages go to stderr via `Write-Diag` so the JSON stream stays machine-readable.
+- Exit codes: `0` means success; non-zero means failure or a hard gate (for example, unauthenticated Azure session or missing prerequisite).
+- Default behavior: if `-OutFile` is omitted, scripts write JSON to stdout; if `-InputFile` is omitted, they read from stdin.
+
+This contract keeps the script pipeline deterministic and chainable across the skills.
+
 ## Relationship Types
 
 | Type | Description | Example |
