@@ -2,6 +2,7 @@
 name: azv-bicep-diagram-sync
 description: Compare Bicep templates against a Draw.io Azure architecture diagram to detect resource-level divergence. Reports differences and offers resolution — update Bicep to match the diagram, update the diagram to match Bicep, or selectively resolve per resource.
 license: MIT
+compatibility: Prefers PowerShell 7 (pwsh) and Azure CLI (az) with Bicep CLI support; falls back to inline parsing and the Draw.io MCP when unavailable. No live Azure session required.
 metadata:
   author: AzVerify
   version: "1.0"
@@ -12,13 +13,14 @@ Compare Bicep templates in a solution folder against their source Draw.io diagra
 
 **Input**: A solution folder containing Bicep templates (`main.bicep`, `modules/*.bicep`) and a Draw.io diagram file (`.drawio` or `.drawio.xml`). The user can specify the folder and diagram file, or the skill will auto-discover them.
 
-**Tools required**: File system tools (read/write files), Draw.io MCP (`mcp_drawio_create_diagram` or `mcp_draw_io_create_diagram`), Bicep MCP server (for best-practice validation when regenerating Bicep)
+**Tools required**: File system tools (read/write files), Draw.io MCP — attempt `mcp_drawio_create_diagram` first; if the tool is not found, fall back to `mcp_draw_io_create_diagram`. If neither is available, report: "Draw.io MCP tool not found. Ensure the MCP server is running and retry." and stop. Bicep MCP server (for best-practice validation when regenerating Bicep)
 
 **Reference files**:
 - `.github/skills/shared/azure-resource-model.md` — Shared resource metadata model definition
 - `.github/skills/shared/azure-stencil-mapping.json` — Azure resource type to Draw.io stencil mapping (used for reverse-lookup and diagram generation)
 - `.github/skills/shared/azure-resource-configs.md` — Per-resource-type configuration schemas with defaults
 - `.github/skills/shared/azure-deployment-verification.md` — **Pre-deployment verification rules (MUST run before generating Bicep updates)**
+- `.github/skills/shared/bicep-best-practices.md` — Bicep authoring rules (MUST read before generating any resource block)
 
 **Shared procedures** (MUST follow):
 - `.github/skills/shared/procedures/diagram-parsing.md` — Diagram-to-resource-model parsing procedure
@@ -41,7 +43,7 @@ Identify the solution folder, the Bicep templates, and the Draw.io diagram to co
 
 **If no folder is specified:**
 - Use the current workspace directory
-- Search for folders containing both a `.drawio` file and a `main.bicep` file
+- Search immediate subdirectories of the workspace root (depth = 1) for folders containing both a `.drawio` file and a `main.bicep` file. Do not recurse deeper than one level.
 - If exactly one such folder is found, use it (announce which folder)
 - If multiple are found, present the list and ask the user to select one
 - If none are found, ask the user to provide a solution folder
@@ -80,19 +82,21 @@ This skill requires Bicep templates to compare against the diagram.
 
 ### 2. Parse Diagram into Resource Model
 
-Follow the procedure in `.github/skills/shared/procedures/diagram-parsing.md` to parse the Draw.io XML into a structured resource model.
+Run `pwsh .github/skills/shared/scripts/ConvertFrom-DrawioDiagram.ps1 -DiagramPath <diagram-file>` — see `.github/skills/shared/procedures/diagram-parsing.md` for the script contract. Capture the JSON output and use it as the diagram resource model for the remaining steps. *(If pwsh or the script is unavailable, follow the inline fallback in the procedure doc above.)* If the script exits with a non-zero code or produces output that is not valid JSON, display the raw script output and stop with: "Script execution failed. Review the output above and re-run once the issue is resolved."
 
 Display the parsed resource model as a table with columns: #, Resource, Type, Container.
 
 ### 3. Parse Bicep Templates into Resource Model
 
-Follow the procedure in `.github/skills/shared/procedures/bicep-parsing.md` to parse all `.bicep` files in the solution folder.
+**Identify the parameter file:** Search the solution folder for `*.bicepparam` files. If exactly one is found, use it as `<selected-param-file>`. If multiple are found, present the list and ask the user to select one. If none are found, omit the `-ParamFile` argument from the script call.
+
+Run `pwsh .github/skills/shared/scripts/ConvertFrom-BicepTemplate.ps1 -BicepFile <solution-folder>/main.bicep -ParamFile <selected-param-file> -Depth standard` — see `.github/skills/shared/procedures/bicep-parsing.md` for the script contract. Capture the JSON output and use it as the Bicep resource model for the remaining steps. *(If pwsh or the script is unavailable, follow the inline fallback in the procedure doc above.)* If the script exits with a non-zero code or produces output that is not valid JSON, display the raw script output and stop with: "Script execution failed. Review the output above and re-run once the issue is resolved."
 
 Display the parsed Bicep resource model as a table with columns: #, Resource, Type, Source File, Notes.
 
 ### 4. Compare Resource Models
 
-Follow the matching procedure in `.github/skills/shared/procedures/resource-matching.md` to compare the diagram resource model (Step 2) against the Bicep resource model (Step 3).
+Run `pwsh .github/skills/shared/scripts/Compare-ResourceModels.ps1 -ModelA <diagram-model.json> -ModelB <bicep-model.json> -LabelA Diagram -LabelB Bicep` — see `.github/skills/shared/procedures/resource-matching.md` for the script contract. Use the emitted match report JSON as the authoritative comparison result. *(If pwsh or the script is unavailable, follow the inline fallback in the procedure doc above.)*
 
 **Additional classifications for this skill:**
 - **In Sync (name differs)** — single-instance type match with name mismatch
@@ -180,7 +184,7 @@ The following changes will be made to the Bicep templates:
 Proceed? (yes/no)
 ```
 
-Wait for explicit confirmation. If the user says no, return to Step 6.
+Wait for explicit confirmation. If the user says no, return to Step 6. Alternatively, if the user says "no" and explains they want to exclude specific resources, treat this as a Selective resolution (Step 9) pre-filtered to only the resources from the bulk list.
 
 **7b. Run deployment verification**
 
@@ -200,16 +204,17 @@ For **Diagram-only resources** (add to Bicep):
    - Compute resources → `modules/compute.bicep`
    - Data/storage resources → `modules/data.bicep`
    - If no matching module exists, create one
-2. Generate the resource block following the rules in `.github/skills/shared/bicep-best-practices.md`
+2. Read `.github/skills/shared/bicep-best-practices.md` and generate the resource block following those rules
 3. Use configuration defaults from `.github/skills/shared/azure-resource-configs.md`
 4. Add parameters to `main.bicep` and the `.bicepparam` file with descriptive comments
 5. Follow Bicep best practices: `parent:` for child resources, `@secure()`, `@description()`, symbolic references
 
 For **Bicep-only resources** (remove from Bicep):
-1. Remove the `resource` block from the module file
-2. Remove associated parameters from `main.bicep` and the `.bicepparam` file
-3. Remove module references in `main.bicep` if the module file is now empty
-4. Remove empty module files
+1. Scan all remaining Bicep files for symbolic references to the resource being removed. If any are found, halt removal of that resource and report: "Cannot remove <resource-name>: it is referenced by <dependent-resource> in <file>. Resolve the dependency first or use Selective mode to skip this resource."
+2. Remove the `resource` block from the module file
+3. Remove associated parameters from `main.bicep` and the `.bicepparam` file
+4. Remove module references in `main.bicep` if the module file is now empty
+5. Remove empty module files
 
 **7d. Present result**
 
@@ -252,7 +257,7 @@ The following changes will be made to the diagram:
 Proceed? (yes/no)
 ```
 
-Wait for explicit confirmation. If the user says no, return to Step 6.
+Wait for explicit confirmation. If the user says no, return to Step 6. Alternatively, if the user says "no" and explains they want to exclude specific resources, treat this as a Selective resolution (Step 9) pre-filtered to only the resources from the bulk list.
 
 **8b. Generate updated diagram**
 
@@ -260,14 +265,14 @@ Wait for explicit confirmation. If the user says no, return to Step 6.
 2. For **Bicep-only resources** (add to diagram):
    - Look up each resource type in `.github/skills/shared/azure-stencil-mapping.json` for the correct icon and style
    - Add new `mxCell` elements with proper Azure icons
-   - Place new resources in the correct container based on their module file and any parent relationships in Bicep
+   - Place new resources using the following priority: (1) if the resource has an explicit `parent:` reference in Bicep, place it inside that parent's container cell; (2) otherwise, place it in the top-level diagram page. If neither condition yields a valid target, place the resource in the top-level page and add a note in the result summary.
    - For container resources (VNets, Subnets), create both the container cell and its icon child cell using the dual icon pattern
 3. For **Diagram-only resources** (remove from diagram):
    - Remove the corresponding `mxCell` elements from the XML
    - Also remove any associated icon cells (cells with `id` ending in `-icon`)
-   - Remove any edges connected to removed cells
-4. Re-layout the diagram to accommodate changes (adjust container sizes, reposition as needed)
-5. Save the updated diagram via the Draw.io MCP tool
+   - Remove any edges connected to removed cells. If a removed cell has edges connecting two cells that both remain in the diagram, also remove those edges and add a note in the result summary: "Warning: edge between <A> and <B> was removed because it passed through the deleted resource <X>. Review connectivity in the diagram."
+4. Expand the parent container's bounding box to fit any newly added child cells. Do not reposition existing cells unless they overlap a newly added cell; in that case, shift the new cell to the nearest open space within the container.
+5. Save the updated diagram via the Draw.io MCP tool. If the Draw.io MCP tool returns an error, do not report the diagram as updated. Instead display: "Diagram save failed: <error message>. No changes were written to disk. Retry or save the XML manually to `<diagram-path>`." Then stop Step 8 without presenting the success message.
 
 **8c. Present result**
 
@@ -299,7 +304,7 @@ This resource exists in the diagram but not in the Bicep templates.
 Choice? (1/2/3)
 ```
 
-Apply the user's choice for each resource following the same logic as Steps 7 and 8.
+Apply the user's choice for each resource following the same logic as Steps 7 and 8. In selective mode, skip the bulk confirmation steps (7a / 8a). Apply each resource's chosen action immediately after the user responds. Batch all file writes and diagram changes; do not write files until all per-resource choices have been collected. Then apply all changes at once and present the summary table.
 
 After all resources are resolved, present a summary:
 
