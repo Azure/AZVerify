@@ -1,0 +1,424 @@
+{
+  "version": 1,
+  "source": "shared/azure-resource-configs.md",
+  "globalSkuRules": [
+    {
+      "resourceTypePattern": "*",
+      "property": "skuName",
+      "armJsonPath": "sku.name",
+      "notes": "Extract from top-level sku object when present"
+    },
+    {
+      "resourceTypePattern": "*",
+      "property": "skuTier",
+      "armJsonPath": "sku.tier",
+      "notes": "Extract from top-level sku object when present"
+    }
+  ],
+  "compositeRules": [
+    {
+      "resourceType": "Microsoft.Compute/virtualMachines",
+      "property": "osImage",
+      "assembledFrom": [
+        "properties.storageProfile.imageReference.publisher",
+        "properties.storageProfile.imageReference.offer",
+        "properties.storageProfile.imageReference.sku",
+        "properties.storageProfile.imageReference.version"
+      ],
+      "format": "publisher:offer:sku:version"
+    }
+  ],
+  "resourceTypes": [
+    {
+      "resourceType": "Microsoft.Compute/virtualMachines",
+      "mcpTool": "mcp_azure_compute",
+      "fallback": "az vm show --ids <resourceId> -o json",
+      "severity": "standard",
+      "properties": [
+        { "name": "vmSize", "armJsonPath": "properties.hardwareProfile.vmSize" },
+        { "name": "osType", "armJsonPath": "properties.storageProfile.osDisk.osType" },
+        { "name": "osImage", "armJsonPath": "composite:osImage" },
+        { "name": "osDiskType", "armJsonPath": "properties.storageProfile.osDisk.managedDisk.storageAccountType" },
+        { "name": "osDiskSizeGB", "armJsonPath": "properties.storageProfile.osDisk.diskSizeGB" },
+        { "name": "dataDisks", "armJsonPath": "properties.storageProfile.dataDisks" },
+        { "name": "adminUsername", "armJsonPath": "properties.osProfile.adminUsername" },
+        { "name": "authenticationType", "armJsonPath": "properties.osProfile.linuxConfiguration.disablePasswordAuthentication" },
+        { "name": "enableBootDiagnostics", "armJsonPath": "properties.diagnosticsProfile.bootDiagnostics.enabled" },
+        { "name": "availabilityZone", "armJsonPath": "zones[0]" },
+        { "name": "enableAcceleratedNetworking", "armJsonPath": "properties.networkProfile.networkInterfaces[0].id" }
+      ]
+    },
+    {
+      "resourceType": "Microsoft.Compute/virtualMachineScaleSets",
+      "mcpTool": "mcp_azure_compute",
+      "fallback": "az vmss show --ids <resourceId> -o json",
+      "severity": "standard",
+      "properties": [
+        { "name": "vmSize", "armJsonPath": "sku.name" },
+        { "name": "capacity", "armJsonPath": "sku.capacity" },
+        { "name": "osImage", "armJsonPath": "properties.virtualMachineProfile.storageProfile.imageReference" },
+        { "name": "upgradePolicy", "armJsonPath": "properties.upgradePolicy.mode" }
+      ]
+    },
+    {
+      "resourceType": "Microsoft.Web/serverfarms",
+      "mcpTool": "mcp_azure_appservice",
+      "fallback": "az appservice plan show --ids <resourceId> -o json",
+      "severity": "standard",
+      "properties": [
+        { "name": "skuName", "armJsonPath": "sku.name" },
+        { "name": "skuTier", "armJsonPath": "sku.tier" },
+        { "name": "kind", "armJsonPath": "kind" },
+        { "name": "reserved", "armJsonPath": "properties.reserved" },
+        { "name": "capacity", "armJsonPath": "sku.capacity" }
+      ]
+    },
+    {
+      "resourceType": "Microsoft.Web/sites",
+      "mcpTool": "mcp_azure_appservice",
+      "fallback": "az webapp show --ids <resourceId> -o json + az webapp config show --ids <resourceId> -o json",
+      "severity": "standard",
+      "properties": [
+        { "name": "runtimeStack", "armJsonPath": "properties.siteConfig.linuxFxVersion or properties.siteConfig.windowsFxVersion" },
+        { "name": "httpsOnly", "armJsonPath": "properties.httpsOnly" },
+        { "name": "minTlsVersion", "armJsonPath": "properties.siteConfig.minTlsVersion" },
+        { "name": "alwaysOn", "armJsonPath": "properties.siteConfig.alwaysOn" },
+        { "name": "http20Enabled", "armJsonPath": "properties.siteConfig.http20Enabled" },
+        { "name": "ftpsState", "armJsonPath": "properties.siteConfig.ftpsState" },
+        { "name": "publicNetworkAccess", "armJsonPath": "properties.publicNetworkAccess" },
+        { "name": "vnetIntegrationSubnet", "armJsonPath": "properties.virtualNetworkSubnetId" }
+      ]
+    },
+    {
+      "resourceType": "Microsoft.Web/sites/functions",
+      "mcpTool": "mcp_azure_appservice",
+      "fallback": "az functionapp show --ids <resourceId> -o json",
+      "severity": "standard",
+      "properties": [
+        { "name": "runtimeStack", "armJsonPath": "properties.siteConfig.linuxFxVersion" },
+        { "name": "hostingPlan", "armJsonPath": "derived from linked serverfarm SKU" },
+        { "name": "httpsOnly", "armJsonPath": "properties.httpsOnly" },
+        { "name": "minTlsVersion", "armJsonPath": "properties.siteConfig.minTlsVersion" }
+      ]
+    },
+    {
+      "resourceType": "Microsoft.Storage/storageAccounts",
+      "mcpTool": "mcp_azure_storage",
+      "fallback": "az storage account show --ids <resourceId> -o json",
+      "severity": "standard",
+      "properties": [
+        { "name": "skuName", "armJsonPath": "sku.name" },
+        { "name": "kind", "armJsonPath": "kind" },
+        { "name": "accessTier", "armJsonPath": "properties.accessTier" },
+        { "name": "minimumTlsVersion", "armJsonPath": "properties.minimumTlsVersion" },
+        { "name": "supportsHttpsTrafficOnly", "armJsonPath": "properties.supportsHttpsTrafficOnly" },
+        { "name": "allowBlobPublicAccess", "armJsonPath": "properties.allowBlobPublicAccess" },
+        { "name": "publicNetworkAccess", "armJsonPath": "properties.publicNetworkAccess" },
+        { "name": "enableHierarchicalNamespace", "armJsonPath": "properties.isHnsEnabled" }
+      ]
+    },
+    {
+      "resourceType": "Microsoft.Sql/servers",
+      "mcpTool": "mcp_azure_sql",
+      "fallback": "az sql server show --ids <resourceId> -o json",
+      "severity": "standard",
+      "properties": [
+        { "name": "administratorLogin", "armJsonPath": "properties.administratorLogin" },
+        { "name": "minimalTlsVersion", "armJsonPath": "properties.minimalTlsVersion" },
+        { "name": "publicNetworkAccess", "armJsonPath": "properties.publicNetworkAccess" }
+      ]
+    },
+    {
+      "resourceType": "Microsoft.Sql/servers/databases",
+      "mcpTool": "mcp_azure_sql",
+      "fallback": "az sql db show --ids <resourceId> -o json",
+      "severity": "standard",
+      "properties": [
+        { "name": "skuName", "armJsonPath": "sku.name" },
+        { "name": "skuTier", "armJsonPath": "sku.tier" },
+        { "name": "maxSizeBytes", "armJsonPath": "properties.maxSizeBytes" },
+        { "name": "zoneRedundant", "armJsonPath": "properties.zoneRedundant" },
+        { "name": "readScale", "armJsonPath": "properties.readScale" },
+        { "name": "backupRedundancy", "armJsonPath": "properties.requestedBackupStorageRedundancy" }
+      ]
+    },
+    {
+      "resourceType": "Microsoft.DocumentDB/databaseAccounts",
+      "mcpTool": "mcp_azure_cosmos",
+      "fallback": "az cosmosdb show --ids <resourceId> -o json",
+      "severity": "standard",
+      "properties": [
+        { "name": "kind", "armJsonPath": "kind" },
+        { "name": "consistencyLevel", "armJsonPath": "properties.consistencyPolicy.defaultConsistencyLevel" },
+        { "name": "capacityMode", "armJsonPath": "properties.capacityMode" },
+        { "name": "enableFreeTier", "armJsonPath": "properties.enableFreeTier" },
+        { "name": "enableAutomaticFailover", "armJsonPath": "properties.enableAutomaticFailover" },
+        { "name": "publicNetworkAccess", "armJsonPath": "properties.publicNetworkAccess" },
+        { "name": "backupPolicy", "armJsonPath": "properties.backupPolicy.type" }
+      ]
+    },
+    {
+      "resourceType": "Microsoft.Cache/redis",
+      "mcpTool": "mcp_azure_redis",
+      "fallback": "az redis show --ids <resourceId> -o json",
+      "severity": "standard",
+      "properties": [
+        { "name": "skuName", "armJsonPath": "properties.sku.name" },
+        { "name": "capacity", "armJsonPath": "properties.sku.capacity" },
+        { "name": "enableNonSslPort", "armJsonPath": "properties.enableNonSslPort" },
+        { "name": "minimumTlsVersion", "armJsonPath": "properties.minimumTlsVersion" },
+        { "name": "publicNetworkAccess", "armJsonPath": "properties.publicNetworkAccess" }
+      ]
+    },
+    {
+      "resourceType": "Microsoft.Network/virtualNetworks",
+      "mcpTool": null,
+      "fallback": "az network vnet show --ids <resourceId> -o json",
+      "severity": "standard",
+      "properties": [
+        { "name": "addressPrefixes", "armJsonPath": "properties.addressSpace.addressPrefixes" },
+        { "name": "enableDdosProtection", "armJsonPath": "properties.enableDdosProtection" }
+      ]
+    },
+    {
+      "resourceType": "Microsoft.Network/virtualNetworks/subnets",
+      "mcpTool": null,
+      "fallback": "az network vnet subnet show --ids <resourceId> -o json",
+      "severity": "standard",
+      "properties": [
+        { "name": "addressPrefix", "armJsonPath": "properties.addressPrefix" },
+        { "name": "serviceEndpoints", "armJsonPath": "properties.serviceEndpoints" },
+        { "name": "delegations", "armJsonPath": "properties.delegations" },
+        { "name": "privateEndpointNetworkPolicies", "armJsonPath": "properties.privateEndpointNetworkPolicies" }
+      ]
+    },
+    {
+      "resourceType": "Microsoft.Network/networkSecurityGroups",
+      "mcpTool": null,
+      "fallback": "az network nsg show --ids <resourceId> -o json",
+      "severity": "standard",
+      "properties": [
+        { "name": "securityRules", "armJsonPath": "properties.securityRules" }
+      ]
+    },
+    {
+      "resourceType": "Microsoft.Network/loadBalancers",
+      "mcpTool": null,
+      "fallback": "az network lb show --ids <resourceId> -o json",
+      "severity": "standard",
+      "properties": [
+        { "name": "skuName", "armJsonPath": "sku.name" },
+        { "name": "type", "armJsonPath": "derived from frontendIPConfigurations" },
+        { "name": "frontendPort", "armJsonPath": "properties.loadBalancingRules[0].properties.frontendPort" },
+        { "name": "backendPort", "armJsonPath": "properties.loadBalancingRules[0].properties.backendPort" },
+        { "name": "protocol", "armJsonPath": "properties.loadBalancingRules[0].properties.protocol" },
+        { "name": "enableFloatingIP", "armJsonPath": "properties.loadBalancingRules[0].properties.enableFloatingIP" }
+      ]
+    },
+    {
+      "resourceType": "Microsoft.Network/applicationGateways",
+      "mcpTool": null,
+      "fallback": "az network application-gateway show --ids <resourceId> -o json",
+      "severity": "standard",
+      "properties": [
+        { "name": "skuName", "armJsonPath": "properties.sku.name" },
+        { "name": "tier", "armJsonPath": "properties.sku.tier" },
+        { "name": "capacity", "armJsonPath": "properties.sku.capacity" },
+        { "name": "enableHttp2", "armJsonPath": "properties.enableHttp2" },
+        { "name": "frontendPort", "armJsonPath": "properties.frontendPorts[0].properties.port" }
+      ]
+    },
+    {
+      "resourceType": "Microsoft.Network/publicIPAddresses",
+      "mcpTool": null,
+      "fallback": "az network public-ip show --ids <resourceId> -o json",
+      "severity": "standard",
+      "properties": [
+        { "name": "skuName", "armJsonPath": "sku.name" },
+        { "name": "allocationMethod", "armJsonPath": "properties.publicIPAllocationMethod" },
+        { "name": "availabilityZone", "armJsonPath": "zones" }
+      ]
+    },
+    {
+      "resourceType": "Microsoft.Network/networkInterfaces",
+      "mcpTool": null,
+      "fallback": "az network nic show --ids <resourceId> -o json",
+      "severity": "standard",
+      "properties": [
+        { "name": "enableAcceleratedNetworking", "armJsonPath": "properties.enableAcceleratedNetworking" },
+        { "name": "enableIPForwarding", "armJsonPath": "properties.enableIPForwarding" },
+        { "name": "privateIPAllocationMethod", "armJsonPath": "properties.ipConfigurations[0].properties.privateIPAllocationMethod" }
+      ]
+    },
+    {
+      "resourceType": "Microsoft.Network/privateEndpoints",
+      "mcpTool": null,
+      "fallback": "az network private-endpoint show --ids <resourceId> -o json",
+      "severity": "standard",
+      "properties": [
+        { "name": "groupIds", "armJsonPath": "properties.privateLinkServiceConnections[0].properties.groupIds" },
+        { "name": "privateDnsZoneGroup", "armJsonPath": "properties.privateDnsZoneGroups" }
+      ]
+    },
+    {
+      "resourceType": "Microsoft.Network/virtualNetworkGateways",
+      "mcpTool": null,
+      "fallback": "az network vnet-gateway show --ids <resourceId> -o json",
+      "severity": "standard",
+      "properties": [
+        { "name": "skuName", "armJsonPath": "properties.sku.name" },
+        { "name": "gatewayType", "armJsonPath": "properties.gatewayType" },
+        { "name": "vpnType", "armJsonPath": "properties.vpnType" },
+        { "name": "enableBgp", "armJsonPath": "properties.enableBgp" }
+      ]
+    },
+    {
+      "resourceType": "Microsoft.Network/azureFirewalls",
+      "mcpTool": null,
+      "fallback": "az network firewall show --ids <resourceId> -o json",
+      "severity": "standard",
+      "properties": [
+        { "name": "skuTier", "armJsonPath": "properties.sku.tier" },
+        { "name": "threatIntelMode", "armJsonPath": "properties.threatIntelMode" }
+      ]
+    },
+    {
+      "resourceType": "Microsoft.Network/bastionHosts",
+      "mcpTool": null,
+      "fallback": "az network bastion show --ids <resourceId> -o json",
+      "severity": "standard",
+      "properties": [
+        { "name": "skuName", "armJsonPath": "sku.name" }
+      ]
+    },
+    {
+      "resourceType": "Microsoft.KeyVault/vaults",
+      "mcpTool": "mcp_azure_keyvault",
+      "fallback": "az keyvault show --ids <resourceId> -o json",
+      "severity": "standard",
+      "properties": [
+        { "name": "skuName", "armJsonPath": "properties.sku.name" },
+        { "name": "enableRbacAuthorization", "armJsonPath": "properties.enableRbacAuthorization" },
+        { "name": "enableSoftDelete", "armJsonPath": "properties.enableSoftDelete" },
+        { "name": "softDeleteRetentionInDays", "armJsonPath": "properties.softDeleteRetentionInDays" },
+        { "name": "publicNetworkAccess", "armJsonPath": "properties.publicNetworkAccess" },
+        { "name": "enablePurgeProtection", "armJsonPath": "properties.enablePurgeProtection" }
+      ]
+    },
+    {
+      "resourceType": "Microsoft.ContainerService/managedClusters",
+      "mcpTool": "mcp_azure_aks",
+      "fallback": "az aks show --ids <resourceId> -o json",
+      "severity": "standard",
+      "properties": [
+        { "name": "kubernetesVersion", "armJsonPath": "properties.kubernetesVersion" },
+        { "name": "defaultNodePoolVmSize", "armJsonPath": "properties.agentPoolProfiles[0].vmSize" },
+        { "name": "defaultNodePoolCount", "armJsonPath": "properties.agentPoolProfiles[0].count" },
+        { "name": "networkPlugin", "armJsonPath": "properties.networkProfile.networkPlugin" },
+        { "name": "networkPolicy", "armJsonPath": "properties.networkProfile.networkPolicy" },
+        { "name": "enableRBAC", "armJsonPath": "properties.enableRBAC" },
+        { "name": "enableManagedIdentity", "armJsonPath": "identity.type contains SystemAssigned or UserAssigned" }
+      ]
+    },
+    {
+      "resourceType": "Microsoft.App/managedEnvironments",
+      "mcpTool": "mcp_azure_containerapps",
+      "fallback": "az containerapp env show --ids <resourceId> -o json",
+      "severity": "standard",
+      "properties": [
+        { "name": "workloadProfileType", "armJsonPath": "properties.workloadProfiles[0].workloadProfileType" },
+        { "name": "zoneRedundant", "armJsonPath": "properties.zoneRedundant" }
+      ]
+    },
+    {
+      "resourceType": "Microsoft.App/containerApps",
+      "mcpTool": "mcp_azure_containerapps",
+      "fallback": "az containerapp show --ids <resourceId> -o json",
+      "severity": "standard",
+      "properties": [
+        { "name": "containerImage", "armJsonPath": "properties.template.containers[0].image" },
+        { "name": "cpuCores", "armJsonPath": "properties.template.containers[0].resources.cpu" },
+        { "name": "memoryGi", "armJsonPath": "properties.template.containers[0].resources.memory" },
+        { "name": "minReplicas", "armJsonPath": "properties.template.scale.minReplicas" },
+        { "name": "maxReplicas", "armJsonPath": "properties.template.scale.maxReplicas" },
+        { "name": "targetPort", "armJsonPath": "properties.configuration.ingress.targetPort" },
+        { "name": "external", "armJsonPath": "properties.configuration.ingress.external" }
+      ]
+    },
+    {
+      "resourceType": "Microsoft.ContainerRegistry/registries",
+      "mcpTool": "mcp_azure_acr",
+      "fallback": "az acr show --ids <resourceId> -o json",
+      "severity": "standard",
+      "properties": [
+        { "name": "skuName", "armJsonPath": "sku.name" },
+        { "name": "adminUserEnabled", "armJsonPath": "properties.adminUserEnabled" },
+        { "name": "publicNetworkAccess", "armJsonPath": "properties.publicNetworkAccess" }
+      ]
+    },
+    {
+      "resourceType": "Microsoft.Insights/components",
+      "mcpTool": "mcp_azure_applicationinsights",
+      "fallback": "az monitor app-insights component show --ids <resourceId> -o json",
+      "severity": "standard",
+      "properties": [
+        { "name": "applicationType", "armJsonPath": "properties.Application_Type" },
+        { "name": "retentionInDays", "armJsonPath": "properties.RetentionInDays" },
+        { "name": "ingestionMode", "armJsonPath": "properties.IngestionMode" }
+      ]
+    },
+    {
+      "resourceType": "Microsoft.OperationalInsights/workspaces",
+      "mcpTool": "mcp_azure_monitor",
+      "fallback": "az monitor log-analytics workspace show --ids <resourceId> -o json",
+      "severity": "standard",
+      "properties": [
+        { "name": "skuName", "armJsonPath": "properties.sku.name" },
+        { "name": "retentionInDays", "armJsonPath": "properties.retentionInDays" }
+      ]
+    },
+    {
+      "resourceType": "Microsoft.ServiceBus/namespaces",
+      "mcpTool": "mcp_azure_servicebus",
+      "fallback": "az servicebus namespace show --ids <resourceId> -o json",
+      "severity": "standard",
+      "properties": [
+        { "name": "skuName", "armJsonPath": "sku.name" },
+        { "name": "capacity", "armJsonPath": "sku.capacity" },
+        { "name": "zoneRedundant", "armJsonPath": "properties.zoneRedundant" }
+      ]
+    },
+    {
+      "resourceType": "Microsoft.EventHub/namespaces",
+      "mcpTool": "mcp_azure_eventhubs",
+      "fallback": "az eventhubs namespace show --ids <resourceId> -o json",
+      "severity": "standard",
+      "properties": [
+        { "name": "skuName", "armJsonPath": "sku.name" },
+        { "name": "capacity", "armJsonPath": "sku.capacity" },
+        { "name": "isAutoInflateEnabled", "armJsonPath": "properties.isAutoInflateEnabled" }
+      ]
+    },
+    {
+      "resourceType": "Microsoft.ApiManagement/service",
+      "mcpTool": null,
+      "fallback": "az apim show --ids <resourceId> -o json",
+      "severity": "standard",
+      "properties": [
+        { "name": "skuName", "armJsonPath": "sku.name" },
+        { "name": "capacity", "armJsonPath": "sku.capacity" },
+        { "name": "publisherEmail", "armJsonPath": "properties.publisherEmail" },
+        { "name": "publisherName", "armJsonPath": "properties.publisherName" }
+      ]
+    },
+    {
+      "resourceType": "Microsoft.Network/privateDnsZones",
+      "mcpTool": null,
+      "fallback": "az network private-dns zone show --ids <resourceId> -o json",
+      "severity": "standard",
+      "properties": [
+        { "name": "zoneName", "armJsonPath": "name" }
+      ]
+    }
+  ]
+}

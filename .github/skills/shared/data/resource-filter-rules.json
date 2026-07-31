@@ -1,0 +1,37 @@
+{
+  "version": 1,
+  "source": "shared/procedures/resource-filtering.md",
+  "rules": [
+    { "resourceType": "Microsoft.Network/networkWatchers", "excludeForDiagram": true, "excludeForBicep": true, "rationale": "Auto-created by Azure" },
+    { "resourceType": "Microsoft.Network/networkWatchers/connectionMonitors", "excludeForDiagram": true, "excludeForBicep": true, "rationale": "Auto-created child" },
+    { "resourceType": "Microsoft.AlertsManagement/smartDetectorAlertRules", "excludeForDiagram": true, "excludeForBicep": true, "rationale": "Auto-created" },
+    { "resourceType": "Microsoft.Portal/dashboards", "excludeForDiagram": true, "excludeForBicep": true, "rationale": "Portal UI artifact" },
+    { "resourceType": "microsoft.insights/autoscalesettings", "excludeForDiagram": true, "excludeForBicep": true, "rationale": "Auto-created", "tagPattern": "hidden-related:" },
+    { "resourceType": "Microsoft.Network/networkIntentPolicies", "excludeForDiagram": true, "excludeForBicep": true, "rationale": "Auto-created" },
+    { "resourceType": "Microsoft.Network/serviceEndpointPolicies", "excludeForDiagram": true, "excludeForBicep": true, "rationale": "Auto-created" },
+    { "resourceType": "Microsoft.Resources/deployments", "excludeForDiagram": true, "excludeForBicep": true, "rationale": "Deployment history" },
+    { "resourceType": "Microsoft.Resources/templateSpecs", "excludeForDiagram": true, "excludeForBicep": true, "rationale": "Template metadata" },
+    { "resourceType": "Microsoft.Authorization/*", "excludeForDiagram": true, "excludeForBicep": true, "rationale": "RBAC / Policy" },
+    { "resourceType": "Microsoft.Insights/components", "excludeForDiagram": true, "excludeForBicep": false, "rationale": "Deployable; not architecture" },
+    { "resourceType": "Microsoft.Insights/actionGroups", "excludeForDiagram": true, "excludeForBicep": false, "rationale": "Deployable; not architecture" },
+    { "resourceType": "Microsoft.OperationalInsights/workspaces", "excludeForDiagram": true, "excludeForBicep": false, "rationale": "Deployable; not architecture" },
+    { "resourceType": "Microsoft.ManagedIdentity/userAssignedIdentities", "excludeForDiagram": false, "excludeForBicep": false, "rationale": "Explicitly created; used for resource authentication and RBAC" },
+    { "resourceType": "Diagnostic settings (child resources)", "excludeForDiagram": true, "excludeForBicep": false, "rationale": "Deployable as child" }
+  ],
+  "tagRules": [
+    {
+      "name": "hidden-tag-prefix",
+      "match": "all tag keys start with hidden-",
+      "excludeForDiagram": true,
+      "excludeForBicep": true,
+      "rationale": "Fully Azure-managed"
+    },
+    {
+      "name": "hidden-related-tag-prefix",
+      "match": "tag key starts with hidden-related:",
+      "excludeForDiagram": true,
+      "excludeForBicep": "check individually",
+      "rationale": "May be Azure-managed"
+    }
+  ]
+}
