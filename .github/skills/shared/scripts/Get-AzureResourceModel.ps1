@@ -412,10 +412,9 @@ function Get-ParentResourceId {
         return $null
     }
 
-    $parentTypeSegments = $typeSegments[0..($typeSegments.Count - 2)]
-    $parentNameSegments = $nameSegments[0..($nameSegments.Count - 2)]
+    $parentNameSegments = $nameSegments[0..($nameSegments.Count - 3)]
 
-    return '/' + (($providerPrefix + $parentTypeSegments + $parentNameSegments) -join '/')
+    return '/' + (($providerPrefix + $parentNameSegments) -join '/')
 }
 
 function Invoke-AzJson {
