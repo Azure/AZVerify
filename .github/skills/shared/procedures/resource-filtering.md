@@ -44,10 +44,27 @@ Use this fallback procedure when `pwsh` or the script is unavailable. If the scr
 
 ## Exclusion Table
 
-- **Path**: `.github/skills/shared/scripts/Select-AzureResources.ps1`
-- **Purpose**: Apply the shared exclusion rules from `.github/skills/shared/data/resource-filter-rules.json` to a resource model.
+| Resource Type | Exclude for Diagrams | Exclude for Bicep | Rationale |
+|---|---|---|---|
+| `Microsoft.Network/networkWatchers` | ✅ | ✅ | Auto-created by Azure |
+| `Microsoft.Network/networkWatchers/connectionMonitors` | ✅ | ✅ | Auto-created child |
+| `Microsoft.AlertsManagement/smartDetectorAlertRules` | ✅ | ✅ | Auto-created |
+| `Microsoft.Portal/dashboards` | ✅ | ✅ | Portal UI artifact |
+| `microsoft.insights/autoscalesettings` (with `hidden-related:` tags) | ✅ | ✅ | Auto-created |
+| `Microsoft.Network/networkIntentPolicies` | ✅ | ✅ | Auto-created |
+| `Microsoft.Network/serviceEndpointPolicies` | ✅ | ✅ | Auto-created |
+| `Microsoft.Resources/deployments` | ✅ | ✅ | Deployment history |
+| `Microsoft.Resources/templateSpecs` | ✅ | ✅ | Template metadata |
+| `Microsoft.Authorization/*` | ✅ | ✅ | RBAC / Policy |
+| `Microsoft.Insights/components` (Application Insights) | ✅ | ❌ KEEP | Deployable; not architecture |
+| `Microsoft.Insights/actionGroups` | ✅ | ❌ KEEP | Deployable; not architecture |
+| `Microsoft.OperationalInsights/workspaces` (Log Analytics) | ✅ | ❌ KEEP | Deployable; not architecture |
+| `Microsoft.ManagedIdentity/userAssignedIdentities` | ❌ KEEP | ❌ KEEP | Explicitly created; used for resource authentication and RBAC |
+| Diagnostic settings (child resources) | ✅ | ❌ KEEP | Deployable as child |
+| Resources with ALL tag keys starting with `hidden-` | ✅ | ✅ | Fully Azure-managed |
+| Resources with `hidden-related:` tag prefixes | ✅ | Check individually | May be Azure-managed |
 
-## Invocation
+## Application Rules
 
 1. Check resource type against the table (case-insensitive)
 2. Check if ALL tag keys start with `hidden-` (fully managed)

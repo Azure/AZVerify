@@ -35,7 +35,7 @@ pwsh .github/skills/shared/scripts/Test-AzureAuth.ps1
 ## Exit Codes
 
 - `0` — authenticated; continue
-- non-zero — no Azure session; **HARD GATE**
+- non-zero — no Azure session.
 
 ## Failure Handling
 
