@@ -66,7 +66,7 @@ If `pwsh` or the script cannot be executed (tool unavailable, binary not on PATH
 
 This skill requires either:
 - PowerShell 7 (pwsh) with Azure CLI (az) on PATH, OR
-- The Azure MCP server installed and connected
+- The Azure MCP server available and connected
 
 Neither was available. Please install one of the above and try again.
 ```
