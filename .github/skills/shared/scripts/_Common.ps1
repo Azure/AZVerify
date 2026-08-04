@@ -1,7 +1,10 @@
+# Common utility functions for AZVerify scripts.
+# Some functions are already defined for later use
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
 function Write-Diag {
+    # Write a diagnostic message to the error stream, prefixed with "[AzVerify]".
     [CmdletBinding()]
     param(
         [Parameter(Mandatory = $true)]
@@ -12,6 +15,7 @@ function Write-Diag {
 }
 
 function Read-ResourceModel {
+    # Read a resource model from a JSON file or standard input and return it as a PowerShell object.
     [CmdletBinding()]
     param(
         [string]$InputFile
@@ -36,6 +40,7 @@ function Read-ResourceModel {
 }
 
 function Write-ResourceModel {
+    # Write a resource model to a JSON file or standard output.
     [CmdletBinding()]
     param(
         [Parameter(Mandatory = $true)]
@@ -55,6 +60,7 @@ function Write-ResourceModel {
 }
 
 function Get-LevenshteinDistance {
+    # Calculate the Levenshtein distance between two strings.
     [CmdletBinding()]
     param(
         [Parameter(Mandatory = $true)]
@@ -104,6 +110,7 @@ function Get-LevenshteinDistance {
 }
 
 function Invoke-Exit {
+    # Exit the script with a given exit code and optional diagnostic message.   
     [CmdletBinding()]
     param(
         [Parameter(Mandatory = $true)]
