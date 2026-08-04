@@ -49,7 +49,8 @@ $rulePath = Join-Path $PSScriptRoot '..\data\resource-filter-rules.json'
 $rulePath = Resolve-Path -Path $rulePath -ErrorAction Stop
 $ruleDocument = Get-Content -LiteralPath $rulePath -Raw | ConvertFrom-Json -Depth 100
 $rules = $ruleDocument.rules
-$tagRules = $ruleDocument.tagRules
+
+$script:RegexCache = @{}
 
 function Convert-WildcardToRegex {
     [CmdletBinding()]
@@ -58,9 +59,14 @@ function Convert-WildcardToRegex {
         [string]$Pattern
     )
 
+    $regex = $script:RegexCache[$Pattern]
+    if ($null -ne $regex) { return $regex }
+
     $escaped = [regex]::Escape($Pattern)
     $regexText = '^' + $escaped.Replace('\*', '.*') + '$'
-    return [regex]$regexText
+    $regex = [regex]::new($regexText, [System.Text.RegularExpressions.RegexOptions]::IgnoreCase)
+    $script:RegexCache[$Pattern] = $regex
+    $regex
 }
 
 function Test-PatternMatch {
@@ -77,7 +83,7 @@ function Test-PatternMatch {
         return $false
     }
     $regex = Convert-WildcardToRegex -Pattern $Pattern
-    return $regex.IsMatch($Value)
+    $regex.IsMatch($Value)
 }
 
 function Test-RuleMatch {
@@ -94,40 +100,57 @@ function Test-RuleMatch {
         return $ResourceType -match '(?i)diagnosticsettings'
     }
 
-    return Test-PatternMatch -Pattern $RuleType.Trim() -Value $ResourceType
+    Test-PatternMatch -Pattern $RuleType.Trim() -Value $ResourceType
+}
+
+function Get-TagKeys {
+    [CmdletBinding()]
+    param(
+        [Parameter()]
+        $Tags
+    )
+
+    if ($null -eq $Tags) { return @() }
+    if ($Tags -is [System.Collections.IDictionary]) {
+        return @($Tags.Keys)
+    }
+    if ($Tags -is [System.Management.Automation.PSCustomObject]) {
+        $names = foreach ($property in $Tags.PSObject.Properties) { $property.Name }
+        return @($names)
+    }
+    @()
 }
 
 function Test-AllTagsHidden {
     [CmdletBinding()]
     param(
         [Parameter()]
-        [hashtable]$Tags
+        [string[]]$TagKeys
     )
 
-    if (-not $Tags) { return $false }
-    if ($Tags.Keys.Count -eq 0) { return $false }
-    foreach ($key in $Tags.Keys) {
+    if (-not $TagKeys -or $TagKeys.Count -eq 0) { return $false }
+    foreach ($key in $TagKeys) {
         if (-not $key.StartsWith('hidden-', [System.StringComparison]::InvariantCultureIgnoreCase)) {
             return $false
         }
     }
-    return $true
+    $true
 }
 
 function Test-HiddenRelatedTag {
     [CmdletBinding()]
     param(
         [Parameter()]
-        [hashtable]$Tags
+        [string[]]$TagKeys
     )
 
-    if (-not $Tags) { return $false }
-    foreach ($key in $Tags.Keys) {
+    if (-not $TagKeys) { return $false }
+    foreach ($key in $TagKeys) {
         if ($key.StartsWith('hidden-related:', [System.StringComparison]::InvariantCultureIgnoreCase)) {
             return $true
         }
     }
-    return $false
+    $false
 }
 
 function Test-ExtraExcludeMatch {
@@ -153,27 +176,24 @@ function Test-ExtraExcludeMatch {
             return $true
         }
     }
-    return $false
+    $false
 }
 
 $model = Read-ResourceModel -InputFile $InputFile
-$resources = @()
+$resources = [System.Collections.Generic.List[object]]::new()
 $excludedCount = 0
 
 foreach ($resource in $model.resources) {
     $shouldExclude = $false
     $resourceType = $resource.type
-    $resourceTags = @{}
-    if ($resource.tags -is [System.Collections.IDictionary]) {
-        $resourceTags = $resource.tags
-    }
+    $tagKeys = Get-TagKeys -Tags $resource.tags
 
-    if (Test-AllTagsHidden -Tags $resourceTags) {
+    if (Test-AllTagsHidden -TagKeys $tagKeys) {
         $shouldExclude = $true
         Write-Diag "Excluding resource '$($resource.name)' because all tags start with hidden-."
     }
 
-    if ((-not $shouldExclude) -and (Test-HiddenRelatedTag -Tags $resourceTags)) {
+    if ((-not $shouldExclude) -and (Test-HiddenRelatedTag -TagKeys $tagKeys)) {
         if ($Mode -eq 'diagram') {
             $shouldExclude = $true
             Write-Diag "Excluding resource '$($resource.name)' from diagram because it has hidden-related:* tags."
@@ -204,7 +224,7 @@ foreach ($resource in $model.resources) {
         continue
     }
 
-    $resources += $resource
+    $resources.Add($resource)
 }
 
 Write-Diag "Filtered $excludedCount resource(s); returning $($resources.Count) resource(s)."

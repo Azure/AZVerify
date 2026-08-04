@@ -1,4 +1,4 @@
-#Requires -Version 7.0
+#Requires -Version 5.1
 <#
 .SYNOPSIS
 Smoke-tests the Phase 1 scripts against all example fixtures.
@@ -84,7 +84,7 @@ foreach ($fixture in $fixtures) {
                     -DiagramPath $drawioFile.FullName `
                     -OutFile $diagramModelFile
 
-                $diagramModel = Get-Content -LiteralPath $diagramModelFile -Raw | ConvertFrom-Json -Depth 100
+                $diagramModel = Read-ResourceModel -InputFile $diagramModelFile
                 $diagramCount = @($diagramModel.resources).Count
                 if ($diagramCount -gt 0) {
                     Add-Result -Fixture $fixtureName -Test 'DrawioDiagram' -Passed $true -Detail "$diagramCount resource(s)"
@@ -115,7 +115,7 @@ foreach ($fixture in $fixtures) {
 
                 & (Join-Path -Path $scriptRoot -ChildPath 'ConvertFrom-BicepTemplate.ps1') @bicepArgs
 
-                $bicepModel = Get-Content -LiteralPath $bicepModelFile -Raw | ConvertFrom-Json -Depth 100
+                $bicepModel = Read-ResourceModel -InputFile $bicepModelFile
                 $bicepCount = @($bicepModel.resources).Count
                 $bicepTypes = @($bicepModel.resources | ForEach-Object { $_.type } | Sort-Object -Unique)
 
@@ -142,7 +142,7 @@ foreach ($fixture in $fixtures) {
                     -Mode 'diagram' `
                     -OutFile $diagramFilteredFile
 
-                $filteredDiagram = Get-Content -LiteralPath $diagramFilteredFile -Raw | ConvertFrom-Json -Depth 100
+                $filteredDiagram = Read-ResourceModel -InputFile $diagramFilteredFile
                 $filteredCount = @($filteredDiagram.resources).Count
                 Add-Result -Fixture $fixtureName -Test 'SelectResources-Diagram' -Passed $true -Detail "$filteredCount resource(s) after filtering"
             }
@@ -158,7 +158,7 @@ foreach ($fixture in $fixtures) {
                     -Mode 'bicep' `
                     -OutFile $bicepFilteredFile
 
-                $filteredBicep = Get-Content -LiteralPath $bicepFilteredFile -Raw | ConvertFrom-Json -Depth 100
+                $filteredBicep = Read-ResourceModel -InputFile $bicepFilteredFile
                 $filteredCount = @($filteredBicep.resources).Count
                 Add-Result -Fixture $fixtureName -Test 'SelectResources-Bicep' -Passed $true -Detail "$filteredCount resource(s) after filtering"
             }

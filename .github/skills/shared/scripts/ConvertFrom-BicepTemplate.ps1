@@ -64,24 +64,56 @@ function Resolve-FullPath {
         return [System.IO.Path]::GetFullPath($Path)
     }
 
-    return [System.IO.Path]::GetFullPath((Join-Path -Path $BasePath -ChildPath $Path))
+    [System.IO.Path]::GetFullPath((Join-Path -Path $BasePath -ChildPath $Path))
 }
 
-function Get-BicepBuildCommand {
+function Get-BicepCommand {
     [CmdletBinding()]
     param()
 
-    $azCommand = Get-Command -Name 'az' -ErrorAction SilentlyContinue
-    if ($azCommand) {
-        return @('az', @('bicep', 'build'))
+    if (Get-Command -Name 'az' -ErrorAction SilentlyContinue) {
+        return @{ Executable = 'az'; Prefix = @('bicep') }
     }
 
-    $bicepCommand = Get-Command -Name 'bicep' -ErrorAction SilentlyContinue
-    if ($bicepCommand) {
-        return @('bicep', @('build'))
+    if (Get-Command -Name 'bicep' -ErrorAction SilentlyContinue) {
+        return @{ Executable = 'bicep'; Prefix = @() }
     }
 
-    return $null
+    $null
+}
+
+function Invoke-BicepCli {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$SubCommand,
+
+        [Parameter(Mandatory = $true)]
+        [string]$InputPath,
+
+        [Parameter(Mandatory = $true)]
+        [string]$OutputPath
+    )
+
+    $command = Get-BicepCommand
+    if ($null -eq $command) {
+        return $false
+    }
+
+    $commandArgs = $command.Prefix + @($SubCommand, '--file', $InputPath, '--outfile', $OutputPath)
+
+    Write-Diag "Running 'bicep $SubCommand' with $($command.Executable)."
+    & $command.Executable @commandArgs 2>&1 | ForEach-Object {
+        if ($_ -is [string] -and -not [string]::IsNullOrWhiteSpace($_)) {
+            Write-Diag $_
+        }
+    }
+
+    if ($LASTEXITCODE -ne 0) {
+        throw "Bicep '$SubCommand' failed for '$InputPath'."
+    }
+
+    $true
 }
 
 function Invoke-BicepBuild {
@@ -94,32 +126,29 @@ function Invoke-BicepBuild {
         [string]$OutputPath
     )
 
-    $commandInfo = Get-BicepBuildCommand
-    if ($null -eq $commandInfo) {
-        return $false
-    }
+    Invoke-BicepCli -SubCommand 'build' -InputPath $TemplatePath -OutputPath $OutputPath
+}
 
-    $commandName = $commandInfo[0]
-    $commandArgs = @($commandInfo[1]) + @('--file', $TemplatePath, '--outfile', $OutputPath)
+function Invoke-BicepBuildParams {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$ParamPath,
 
-    Write-Diag "Compiling Bicep template with $commandName."
-    & $commandName @commandArgs 2>&1 | ForEach-Object {
-        if ($_ -is [string] -and -not [string]::IsNullOrWhiteSpace($_)) {
-            Write-Diag $_
-        }
-    }
+        [Parameter(Mandatory = $true)]
+        [string]$OutputPath
+    )
 
-    if ($LASTEXITCODE -ne 0) {
-        throw "Bicep build failed for template '$TemplatePath'."
-    }
-
-    return $true
+    Invoke-BicepCli -SubCommand 'build-params' -InputPath $ParamPath -OutputPath $OutputPath
 }
 
 function Get-ParameterOverrides {
     [CmdletBinding()]
     param(
-        [string]$ParameterFilePath
+        [string]$ParameterFilePath,
+
+        [Parameter(Mandatory = $true)]
+        [string]$WorkingDirectory
     )
 
     if ([string]::IsNullOrWhiteSpace($ParameterFilePath)) {
@@ -130,45 +159,30 @@ function Get-ParameterOverrides {
         throw "Parameter file not found: $ParameterFilePath"
     }
 
-    $content = Get-Content -LiteralPath $ParameterFilePath -Raw -ErrorAction Stop
+    # Compile the .bicepparam to ARM parameters JSON so values keep their real types
+    # instead of being reconstructed from Bicep source text by hand.
+    $paramsJsonPath = Join-Path -Path $WorkingDirectory -ChildPath 'params.json'
+    if (-not (Invoke-BicepBuildParams -ParamPath $ParameterFilePath -OutputPath $paramsJsonPath)) {
+        throw 'Bicep CLI is unavailable for parameter compilation.'
+    }
+
+    $content = Get-Content -LiteralPath $paramsJsonPath -Raw -ErrorAction Stop
     if ([string]::IsNullOrWhiteSpace($content)) {
         return @{}
     }
 
+    $document = ConvertFrom-Json -InputObject $content -Depth 100
     $overrides = @{}
-    $currentName = $null
-
-    foreach ($line in ($content -split "`r?`n")) {
-        $trimmedLine = $line.Trim()
-        if ([string]::IsNullOrWhiteSpace($trimmedLine) -or $trimmedLine.StartsWith('//')) {
-            continue
-        }
-
-        if ($trimmedLine -match '^param\s+([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.+)$') {
-            $currentName = $matches[1]
-            $valueText = $matches[2].Trim()
-
-            if ($valueText -eq '{' -or $valueText -eq '[') {
-                $overrides[$currentName] = $valueText
-                continue
-            }
-
-            $overrides[$currentName] = $valueText
-            $currentName = $null
-            continue
-        }
-
-        if ($null -ne $currentName) {
-            $existing = [string]$overrides[$currentName]
-            $overrides[$currentName] = "$existing`n$trimmedLine"
-
-            if ($trimmedLine -eq '}' -or $trimmedLine -eq ']') {
-                $currentName = $null
+    if ($document.PSObject.Properties['parameters'] -and $null -ne $document.parameters) {
+        foreach ($property in $document.parameters.PSObject.Properties) {
+            $entry = $property.Value
+            if ($entry -is [System.Management.Automation.PSCustomObject] -and $entry.PSObject.Properties['value']) {
+                $overrides[$property.Name] = $entry.value
             }
         }
     }
 
-    return $overrides
+    $overrides
 }
 
 function ConvertTo-ParameterValue {
@@ -209,7 +223,7 @@ function ConvertTo-ParameterValue {
         return $items.ToArray()
     }
 
-    return $Value
+    $Value
 }
 
 function Get-ArmParameters {
@@ -232,53 +246,18 @@ function Get-ArmParameters {
         $parameterDefinition = $property.Value
 
         if ($Overrides.ContainsKey($parameterName)) {
-            $rawOverride = [string]$Overrides[$parameterName]
-            try {
-                $parameters[$parameterName] = @{ value = (ConvertFrom-Json -InputObject $rawOverride -Depth 100 -ErrorAction Stop) }
-            }
-            catch {
-                $trimmed = $rawOverride.Trim()
-                if ($trimmed -match "^'(.*)'$") {
-                    $parameters[$parameterName] = @{ value = $matches[1] }
-                }
-                elseif ($trimmed -match '^(true|false)$') {
-                    $parameters[$parameterName] = @{ value = [bool]::Parse($trimmed) }
-                }
-                elseif ($trimmed -match '^-?\d+$') {
-                    $parameters[$parameterName] = @{ value = [int64]$trimmed }
-                }
-                elseif ($trimmed -match '^-?\d+\.\d+$') {
-                    $parameters[$parameterName] = @{ value = [double]$trimmed }
-                }
-                else {
-                    $parameters[$parameterName] = @{ value = $trimmed.Trim("'") }
-                }
-            }
-
+            $parameters[$parameterName] = @{ value = (ConvertTo-ParameterValue -Value $Overrides[$parameterName]) }
             continue
         }
 
-        if ($parameterDefinition.PSObject.Properties.Name -contains 'defaultValue' -and $null -ne $parameterDefinition.defaultValue) {
+        if ($parameterDefinition.PSObject.Properties['defaultValue'] -and $null -ne $parameterDefinition.defaultValue) {
             $parameters[$parameterName] = @{ value = (ConvertTo-ParameterValue -Value $parameterDefinition.defaultValue) }
         }
     }
 
-    return $parameters
+    $parameters
 }
 
-function Get-ExpressionText {
-    [CmdletBinding()]
-    param(
-        [AllowNull()]
-        $Value
-    )
-
-    if ($Value -is [string]) {
-        return $Value
-    }
-
-    return $null
-}
 
 function Resolve-ArmExpression {
     [CmdletBinding()]
@@ -296,19 +275,7 @@ function Resolve-ArmExpression {
         [hashtable]$Variables,
 
         [Parameter(Mandatory = $true)]
-        [hashtable]$ResourceIndex,
-
-        [Parameter(Mandatory = $true)]
-        [string]$TemplatePath,
-
-        [Parameter(Mandatory = $true)]
-        [string]$ResourceGroupName,
-
-        [Parameter(Mandatory = $true)]
-        [string]$SubscriptionId,
-
-        [Parameter(Mandatory = $true)]
-        [string]$Location,
+        [hashtable]$Context,
 
         [Parameter(Mandatory = $true)]
         [int]$DepthRemaining
@@ -325,7 +292,7 @@ function Resolve-ArmExpression {
     if ($Value -is [System.Management.Automation.PSCustomObject]) {
         $hash = @{}
         foreach ($property in $Value.PSObject.Properties) {
-            $hash[$property.Name] = Resolve-ArmExpression -Value $property.Value -Template $Template -Parameters $Parameters -Variables $Variables -ResourceIndex $ResourceIndex -TemplatePath $TemplatePath -ResourceGroupName $ResourceGroupName -SubscriptionId $SubscriptionId -Location $Location -DepthRemaining ($DepthRemaining - 1)
+            $hash[$property.Name] = Resolve-ArmExpression -Value $property.Value -Template $Template -Parameters $Parameters -Variables $Variables -Context $Context -DepthRemaining ($DepthRemaining - 1)
         }
 
         return $hash
@@ -334,7 +301,7 @@ function Resolve-ArmExpression {
     if ($Value -is [System.Collections.IDictionary]) {
         $hash = @{}
         foreach ($key in $Value.Keys) {
-            $hash[[string]$key] = Resolve-ArmExpression -Value $Value[$key] -Template $Template -Parameters $Parameters -Variables $Variables -ResourceIndex $ResourceIndex -TemplatePath $TemplatePath -ResourceGroupName $ResourceGroupName -SubscriptionId $SubscriptionId -Location $Location -DepthRemaining ($DepthRemaining - 1)
+            $hash[[string]$key] = Resolve-ArmExpression -Value $Value[$key] -Template $Template -Parameters $Parameters -Variables $Variables -Context $Context -DepthRemaining ($DepthRemaining - 1)
         }
 
         return $hash
@@ -343,7 +310,7 @@ function Resolve-ArmExpression {
     if ($Value -is [System.Collections.IEnumerable] -and $Value -isnot [string]) {
         $items = New-Object System.Collections.Generic.List[object]
         foreach ($item in $Value) {
-            $items.Add((Resolve-ArmExpression -Value $item -Template $Template -Parameters $Parameters -Variables $Variables -ResourceIndex $ResourceIndex -TemplatePath $TemplatePath -ResourceGroupName $ResourceGroupName -SubscriptionId $SubscriptionId -Location $Location -DepthRemaining ($DepthRemaining - 1)))
+            $items.Add((Resolve-ArmExpression -Value $item -Template $Template -Parameters $Parameters -Variables $Variables -Context $Context -DepthRemaining ($DepthRemaining - 1)))
         }
 
         return $items.ToArray()
@@ -375,8 +342,8 @@ function Resolve-ArmExpression {
             return $Variables[$variableName]
         }
 
-        if ($null -ne $Template -and $Template -is [System.Management.Automation.PSCustomObject] -and $Template.PSObject.Properties.Name -contains 'variables' -and $null -ne $Template.variables -and $Template.variables -is [System.Management.Automation.PSCustomObject] -and $Template.variables.PSObject.Properties.Name -contains $variableName) {
-            $resolvedVariable = Resolve-ArmExpression -Value $Template.variables.$variableName -Template $Template -Parameters $Parameters -Variables $Variables -ResourceIndex $ResourceIndex -TemplatePath $TemplatePath -ResourceGroupName $ResourceGroupName -SubscriptionId $SubscriptionId -Location $Location -DepthRemaining ($DepthRemaining - 1)
+        if ($null -ne $Template -and $Template -is [System.Management.Automation.PSCustomObject] -and $Template.PSObject.Properties['variables'] -and $null -ne $Template.variables -and $Template.variables -is [System.Management.Automation.PSCustomObject] -and $Template.variables.PSObject.Properties[$variableName]) {
+            $resolvedVariable = Resolve-ArmExpression -Value $Template.variables.$variableName -Template $Template -Parameters $Parameters -Variables $Variables -Context $Context -DepthRemaining ($DepthRemaining - 1)
             $Variables[$variableName] = $resolvedVariable
             return $resolvedVariable
         }
@@ -385,22 +352,22 @@ function Resolve-ArmExpression {
     }
 
     if ($expression -match '^resourceGroup\(\)\.location$') {
-        return $Location
+        return $Context.Location
     }
 
     if ($expression -match '^resourceGroup\(\)\.name$') {
-        return $ResourceGroupName
+        return $Context.ResourceGroupName
     }
 
     if ($expression -match '^subscription\(\)\.subscriptionId$') {
-        return $SubscriptionId
+        return $Context.SubscriptionId
     }
 
     if ($expression -match '^concat\((.+)\)$') {
         $parts = Split-ArmArguments -ArgumentText $matches[1]
         $builder = New-Object System.Text.StringBuilder
         foreach ($part in $parts) {
-            $resolvedPart = Resolve-ArmExpression -Value "[$part]" -Template $Template -Parameters $Parameters -Variables $Variables -ResourceIndex $ResourceIndex -TemplatePath $TemplatePath -ResourceGroupName $ResourceGroupName -SubscriptionId $SubscriptionId -Location $Location -DepthRemaining ($DepthRemaining - 1)
+            $resolvedPart = Resolve-ArmExpression -Value "[$part]" -Template $Template -Parameters $Parameters -Variables $Variables -Context $Context -DepthRemaining ($DepthRemaining - 1)
             [void]$builder.Append([string]$resolvedPart)
         }
 
@@ -410,10 +377,10 @@ function Resolve-ArmExpression {
     if ($expression -match '^format\(') {
         $parts = Split-ArmArguments -ArgumentText ($expression.Substring(7, $expression.Length - 8))
         if ($parts.Count -gt 0) {
-            $formatString = Resolve-ArmExpression -Value "[$($parts[0])]" -Template $Template -Parameters $Parameters -Variables $Variables -ResourceIndex $ResourceIndex -TemplatePath $TemplatePath -ResourceGroupName $ResourceGroupName -SubscriptionId $SubscriptionId -Location $Location -DepthRemaining ($DepthRemaining - 1)
+            $formatString = Resolve-ArmExpression -Value "[$($parts[0])]" -Template $Template -Parameters $Parameters -Variables $Variables -Context $Context -DepthRemaining ($DepthRemaining - 1)
             $formatArgs = @()
             for ($index = 1; $index -lt $parts.Count; $index++) {
-                $formatArgs += Resolve-ArmExpression -Value "[$($parts[$index])]" -Template $Template -Parameters $Parameters -Variables $Variables -ResourceIndex $ResourceIndex -TemplatePath $TemplatePath -ResourceGroupName $ResourceGroupName -SubscriptionId $SubscriptionId -Location $Location -DepthRemaining ($DepthRemaining - 1)
+                $formatArgs += Resolve-ArmExpression -Value "[$($parts[$index])]" -Template $Template -Parameters $Parameters -Variables $Variables -Context $Context -DepthRemaining ($DepthRemaining - 1)
             }
 
             return [string]::Format([string]$formatString, $formatArgs)
@@ -421,34 +388,34 @@ function Resolve-ArmExpression {
     }
 
     if ($expression -match '^toLower\((.+)\)$') {
-        $inner = Resolve-ArmExpression -Value "[$($matches[1])]" -Template $Template -Parameters $Parameters -Variables $Variables -ResourceIndex $ResourceIndex -TemplatePath $TemplatePath -ResourceGroupName $ResourceGroupName -SubscriptionId $SubscriptionId -Location $Location -DepthRemaining ($DepthRemaining - 1)
-        return [string]$inner.ToLowerInvariant()
+        $inner = Resolve-ArmExpression -Value "[$($matches[1])]" -Template $Template -Parameters $Parameters -Variables $Variables -Context $Context -DepthRemaining ($DepthRemaining - 1)
+        return ([string]$inner).ToLowerInvariant()
     }
 
     if ($expression -match '^toUpper\((.+)\)$') {
-        $inner = Resolve-ArmExpression -Value "[$($matches[1])]" -Template $Template -Parameters $Parameters -Variables $Variables -ResourceIndex $ResourceIndex -TemplatePath $TemplatePath -ResourceGroupName $ResourceGroupName -SubscriptionId $SubscriptionId -Location $Location -DepthRemaining ($DepthRemaining - 1)
-        return [string]$inner.ToUpperInvariant()
+        $inner = Resolve-ArmExpression -Value "[$($matches[1])]" -Template $Template -Parameters $Parameters -Variables $Variables -Context $Context -DepthRemaining ($DepthRemaining - 1)
+        return ([string]$inner).ToUpperInvariant()
     }
 
     if ($expression -match '^resourceId\((.+)\)$') {
         $parts = Split-ArmArguments -ArgumentText $matches[1]
         if ($parts.Count -ge 1) {
-            $typeValue = Resolve-ArmExpression -Value "[$($parts[0])]" -Template $Template -Parameters $Parameters -Variables $Variables -ResourceIndex $ResourceIndex -TemplatePath $TemplatePath -ResourceGroupName $ResourceGroupName -SubscriptionId $SubscriptionId -Location $Location -DepthRemaining ($DepthRemaining - 1)
+            $typeValue = Resolve-ArmExpression -Value "[$($parts[0])]" -Template $Template -Parameters $Parameters -Variables $Variables -Context $Context -DepthRemaining ($DepthRemaining - 1)
             $nameSegments = @()
             for ($index = 1; $index -lt $parts.Count; $index++) {
-                $nameSegments += [string](Resolve-ArmExpression -Value "[$($parts[$index])]" -Template $Template -Parameters $Parameters -Variables $Variables -ResourceIndex $ResourceIndex -TemplatePath $TemplatePath -ResourceGroupName $ResourceGroupName -SubscriptionId $SubscriptionId -Location $Location -DepthRemaining ($DepthRemaining - 1))
+                $nameSegments += [string](Resolve-ArmExpression -Value "[$($parts[$index])]" -Template $Template -Parameters $Parameters -Variables $Variables -Context $Context -DepthRemaining ($DepthRemaining - 1))
             }
 
-            return "/subscriptions/$SubscriptionId/resourceGroups/$ResourceGroupName/providers/$typeValue/$($nameSegments -join '/')"
+            return "/subscriptions/$($Context.SubscriptionId)/resourceGroups/$($Context.ResourceGroupName)/providers/$typeValue/$($nameSegments -join '/')"
         }
     }
 
     if ($expression -match '^reference\((.+?)\)(\..+)?$') {
         $parts = Split-ArmArguments -ArgumentText $matches[1]
         if ($parts.Count -ge 1) {
-            $referenceTarget = Resolve-ArmExpression -Value "[$($parts[0])]" -Template $Template -Parameters $Parameters -Variables $Variables -ResourceIndex $ResourceIndex -TemplatePath $TemplatePath -ResourceGroupName $ResourceGroupName -SubscriptionId $SubscriptionId -Location $Location -DepthRemaining ($DepthRemaining - 1)
-            if ($ResourceIndex.ContainsKey([string]$referenceTarget)) {
-                $resource = $ResourceIndex[[string]$referenceTarget]
+            $referenceTarget = Resolve-ArmExpression -Value "[$($parts[0])]" -Template $Template -Parameters $Parameters -Variables $Variables -Context $Context -DepthRemaining ($DepthRemaining - 1)
+            if ($Context.ResourceIndex.ContainsKey([string]$referenceTarget)) {
+                $resource = $Context.ResourceIndex[[string]$referenceTarget]
                 $suffix = $matches[2]
                 if ([string]::IsNullOrWhiteSpace($suffix)) {
                     return $resource
@@ -462,12 +429,12 @@ function Resolve-ArmExpression {
     if ($expression -match '^if\((.+)\)$') {
         $parts = Split-ArmArguments -ArgumentText $matches[1]
         if ($parts.Count -eq 3) {
-            $condition = Resolve-ArmExpression -Value "[$($parts[0])]" -Template $Template -Parameters $Parameters -Variables $Variables -ResourceIndex $ResourceIndex -TemplatePath $TemplatePath -ResourceGroupName $ResourceGroupName -SubscriptionId $SubscriptionId -Location $Location -DepthRemaining ($DepthRemaining - 1)
+            $condition = Resolve-ArmExpression -Value "[$($parts[0])]" -Template $Template -Parameters $Parameters -Variables $Variables -Context $Context -DepthRemaining ($DepthRemaining - 1)
             if ([bool]$condition) {
-                return Resolve-ArmExpression -Value "[$($parts[1])]" -Template $Template -Parameters $Parameters -Variables $Variables -ResourceIndex $ResourceIndex -TemplatePath $TemplatePath -ResourceGroupName $ResourceGroupName -SubscriptionId $SubscriptionId -Location $Location -DepthRemaining ($DepthRemaining - 1)
+                return Resolve-ArmExpression -Value "[$($parts[1])]" -Template $Template -Parameters $Parameters -Variables $Variables -Context $Context -DepthRemaining ($DepthRemaining - 1)
             }
 
-            return Resolve-ArmExpression -Value "[$($parts[2])]" -Template $Template -Parameters $Parameters -Variables $Variables -ResourceIndex $ResourceIndex -TemplatePath $TemplatePath -ResourceGroupName $ResourceGroupName -SubscriptionId $SubscriptionId -Location $Location -DepthRemaining ($DepthRemaining - 1)
+            return Resolve-ArmExpression -Value "[$($parts[2])]" -Template $Template -Parameters $Parameters -Variables $Variables -Context $Context -DepthRemaining ($DepthRemaining - 1)
         }
     }
 
@@ -483,7 +450,7 @@ function Resolve-ArmExpression {
         return [bool]::Parse($expression)
     }
 
-    return $Value
+    $Value
 }
 
 function Split-ArmArguments {
@@ -530,7 +497,7 @@ function Split-ArmArguments {
 
     # Use comma operator to prevent pipeline enumeration — a single-element List would otherwise
     # be unwrapped to a bare string by PowerShell, making .Count fail under Set-StrictMode.
-    return , $arguments.ToArray()
+    , $arguments.ToArray()
 }
 
 function Get-ObjectPropertyValue {
@@ -558,7 +525,7 @@ function Get-ObjectPropertyValue {
             $arrayIndex = [int]$matches[2]
 
             if ($current -is [System.Management.Automation.PSCustomObject]) {
-                if (-not ($current.PSObject.Properties.Name -contains $propertyName)) { return $null }
+                if (-not $current.PSObject.Properties[$propertyName]) { return $null }
                 $current = $current.$propertyName
             } elseif ($current -is [System.Collections.IDictionary]) {
                 if (-not $current.Contains($propertyName)) { return $null }
@@ -577,7 +544,7 @@ function Get-ObjectPropertyValue {
         }
 
         if ($current -is [System.Management.Automation.PSCustomObject]) {
-            if (-not ($current.PSObject.Properties.Name -contains $segment)) { return $null }
+            if (-not $current.PSObject.Properties[$segment]) { return $null }
             $current = $current.$segment
         } elseif ($current -is [System.Collections.IDictionary]) {
             if (-not $current.Contains($segment)) { return $null }
@@ -587,7 +554,7 @@ function Get-ObjectPropertyValue {
         }
     }
 
-    return $current
+    $current
 }
 
 function Get-ResourceGroupNameFromTemplatePath {
@@ -597,7 +564,7 @@ function Get-ResourceGroupNameFromTemplatePath {
         [string]$TemplatePath
     )
 
-    return Split-Path -Path (Split-Path -Path $TemplatePath -Parent) -Leaf
+    Split-Path -Path (Split-Path -Path $TemplatePath -Parent) -Leaf
 }
 
 function Get-DepthLevel {
@@ -626,12 +593,21 @@ function Get-EnumerableResources {
         return @()
     }
 
-    if ($Resources -is [System.Collections.IDictionary]) {
+    # ARM languageVersion 2.0 emits resources as a symbolic-name → resource map, surfaced
+    # either as a hashtable or a PSCustomObject depending on the JSON parser.
+    if ($Resources -is [System.Collections.IDictionary] -or $Resources -is [System.Management.Automation.PSCustomObject]) {
+        if ($Resources -is [System.Collections.IDictionary]) {
+            $namedResources = $Resources.Keys | ForEach-Object { @{ Name = [string]$_; Value = $Resources[$_] } }
+        }
+        else {
+            $namedResources = $Resources.PSObject.Properties | ForEach-Object { @{ Name = [string]$_.Name; Value = $_.Value } }
+        }
+
         $items = New-Object System.Collections.Generic.List[object]
-        foreach ($key in $Resources.Keys) {
-            $resource = $Resources[$key]
-            if ($resource -is [System.Management.Automation.PSCustomObject] -and -not ($resource.PSObject.Properties.Name -contains 'symbolicName')) {
-                Add-Member -InputObject $resource -NotePropertyName 'symbolicName' -NotePropertyValue ([string]$key) -Force
+        foreach ($entry in $namedResources) {
+            $resource = $entry.Value
+            if ($resource -is [System.Management.Automation.PSCustomObject] -and -not $resource.PSObject.Properties['symbolicName']) {
+                Add-Member -InputObject $resource -NotePropertyName 'symbolicName' -NotePropertyValue $entry.Name -Force
             }
 
             $items.Add($resource)
@@ -640,22 +616,7 @@ function Get-EnumerableResources {
         return $items.ToArray()
     }
 
-    # ARM languageVersion 2.0 emits resources as a PSCustomObject (symbolic-name → resource object).
-    if ($Resources -is [System.Management.Automation.PSCustomObject]) {
-        $items = New-Object System.Collections.Generic.List[object]
-        foreach ($prop in $Resources.PSObject.Properties) {
-            $resource = $prop.Value
-            if ($resource -is [System.Management.Automation.PSCustomObject] -and -not ($resource.PSObject.Properties.Name -contains 'symbolicName')) {
-                Add-Member -InputObject $resource -NotePropertyName 'symbolicName' -NotePropertyValue ([string]$prop.Name) -Force
-            }
-
-            $items.Add($resource)
-        }
-
-        return $items.ToArray()
-    }
-
-    if ($Resources -is [System.Collections.IEnumerable] -and $Resources -isnot [string] -and $Resources -isnot [System.Management.Automation.PSCustomObject]) {
+    if ($Resources -is [System.Collections.IEnumerable] -and $Resources -isnot [string]) {
         $items = New-Object System.Collections.Generic.List[object]
         foreach ($resource in $Resources) {
             $items.Add($resource)
@@ -664,7 +625,7 @@ function Get-EnumerableResources {
         return $items.ToArray()
     }
 
-    return @($Resources)
+    @($Resources)
 }
 
 function Get-ResourceNameFromId {
@@ -689,7 +650,7 @@ function Get-ResourceNameFromId {
         return $ResourceId
     }
 
-    return ($segments[$nameStartIndex..($segments.Length - 1)] -join '/')
+    $segments[$nameStartIndex..($segments.Length - 1)] -join '/'
 }
 
 function Convert-ArmResourceToModel {
@@ -699,25 +660,13 @@ function Convert-ArmResourceToModel {
         $Resource,
 
         [Parameter(Mandatory = $true)]
-        [string]$TemplatePath,
-
-        [Parameter(Mandatory = $true)]
         [hashtable]$Parameters,
 
         [Parameter(Mandatory = $true)]
         [hashtable]$Variables,
 
         [Parameter(Mandatory = $true)]
-        [hashtable]$ResourceIndex,
-
-        [Parameter(Mandatory = $true)]
-        [string]$ResourceGroupName,
-
-        [Parameter(Mandatory = $true)]
-        [string]$SubscriptionId,
-
-        [Parameter(Mandatory = $true)]
-        [string]$Location,
+        [hashtable]$Context,
 
         [Parameter(Mandatory = $true)]
         [int]$DepthRemaining,
@@ -728,36 +677,36 @@ function Convert-ArmResourceToModel {
     )
 
     Write-Diag 'Entered Convert-ArmResourceToModel.'
-    if (-not ($Resource.PSObject.Properties.Name -contains 'type')) {
+    if (-not $Resource.PSObject.Properties['type']) {
         return @()
     }
     Write-Diag 'Resource type property confirmed.'
 
     Write-Diag 'Resolving resource name.'
     $resolvedName = $null
-    if ($Resource.PSObject.Properties.Name -contains 'name') {
-        $resolvedName = Resolve-ArmExpression -Value $Resource.name -Template $null -Parameters $Parameters -Variables $Variables -ResourceIndex $ResourceIndex -TemplatePath $TemplatePath -ResourceGroupName $ResourceGroupName -SubscriptionId $SubscriptionId -Location $Location -DepthRemaining $DepthRemaining
+    if ($Resource.PSObject.Properties['name']) {
+        $resolvedName = Resolve-ArmExpression -Value $Resource.name -Template $null -Parameters $Parameters -Variables $Variables -Context $Context -DepthRemaining $DepthRemaining
     }
     Write-Diag 'Resolving resource location.'
-    $resolvedLocation = $Location
-    if ($Resource.PSObject.Properties.Name -contains 'location') {
-        $resolvedLocation = Resolve-ArmExpression -Value $Resource.location -Template $null -Parameters $Parameters -Variables $Variables -ResourceIndex $ResourceIndex -TemplatePath $TemplatePath -ResourceGroupName $ResourceGroupName -SubscriptionId $SubscriptionId -Location $Location -DepthRemaining $DepthRemaining
+    $resolvedLocation = $Context.Location
+    if ($Resource.PSObject.Properties['location']) {
+        $resolvedLocation = Resolve-ArmExpression -Value $Resource.location -Template $null -Parameters $Parameters -Variables $Variables -Context $Context -DepthRemaining $DepthRemaining
     }
     Write-Diag 'Resolving resource tags.'
     $resolvedTags = @{}
-    if ($Resource.PSObject.Properties.Name -contains 'tags') {
-        $resolvedTags = Resolve-ArmExpression -Value $Resource.tags -Template $null -Parameters $Parameters -Variables $Variables -ResourceIndex $ResourceIndex -TemplatePath $TemplatePath -ResourceGroupName $ResourceGroupName -SubscriptionId $SubscriptionId -Location $Location -DepthRemaining $DepthRemaining
+    if ($Resource.PSObject.Properties['tags']) {
+        $resolvedTags = Resolve-ArmExpression -Value $Resource.tags -Template $null -Parameters $Parameters -Variables $Variables -Context $Context -DepthRemaining $DepthRemaining
     }
     Write-Diag 'Resolving resource properties.'
     $resolvedProperties = @{}
-    if ($DepthRemaining -gt 0 -and $Resource.PSObject.Properties.Name -contains 'properties') {
-        $resolvedProperties = Resolve-ArmExpression -Value $Resource.properties -Template $null -Parameters $Parameters -Variables $Variables -ResourceIndex $ResourceIndex -TemplatePath $TemplatePath -ResourceGroupName $ResourceGroupName -SubscriptionId $SubscriptionId -Location $Location -DepthRemaining $DepthRemaining
+    if ($DepthRemaining -gt 0 -and $Resource.PSObject.Properties['properties']) {
+        $resolvedProperties = Resolve-ArmExpression -Value $Resource.properties -Template $null -Parameters $Parameters -Variables $Variables -Context $Context -DepthRemaining $DepthRemaining
     }
 
     Write-Diag 'Resolving resource id.'
-    $resourceId = "/subscriptions/$SubscriptionId/resourceGroups/$ResourceGroupName/providers/$($Resource.type)/$resolvedName"
-    if ($Resource.PSObject.Properties.Name -contains 'id' -and $Resource.id) {
-        $resourceId = Resolve-ArmExpression -Value $Resource.id -Template $null -Parameters $Parameters -Variables $Variables -ResourceIndex $ResourceIndex -TemplatePath $TemplatePath -ResourceGroupName $ResourceGroupName -SubscriptionId $SubscriptionId -Location $Location -DepthRemaining $DepthRemaining
+    $resourceId = "/subscriptions/$($Context.SubscriptionId)/resourceGroups/$($Context.ResourceGroupName)/providers/$($Resource.type)/$resolvedName"
+    if ($Resource.PSObject.Properties['id'] -and $Resource.id) {
+        $resourceId = Resolve-ArmExpression -Value $Resource.id -Template $null -Parameters $Parameters -Variables $Variables -Context $Context -DepthRemaining $DepthRemaining
     }
 
     if ([string]::IsNullOrWhiteSpace([string]$resolvedName)) {
@@ -766,7 +715,7 @@ function Convert-ArmResourceToModel {
 
     Write-Diag 'Building model resource object.'
     $symbolicName = [string]$resolvedName
-    if ($Resource.PSObject.Properties.Name -contains 'symbolicName' -and $Resource.symbolicName) {
+    if ($Resource.PSObject.Properties['symbolicName'] -and $Resource.symbolicName) {
         $symbolicName = [string]$Resource.symbolicName
     }
     $modelResource = [ordered]@{
@@ -776,35 +725,35 @@ function Convert-ArmResourceToModel {
         apiVersion = [string]$Resource.apiVersion
         name = [string]$resolvedName
         sourceFile = [string]$SourceFile
-        conditional = [bool]($Resource.PSObject.Properties.Name -contains 'condition' -and $null -ne $Resource.condition)
+        conditional = [bool]($Resource.PSObject.Properties['condition'] -and $null -ne $Resource.condition)
         parent = $ParentSymbolicName
-        resourceGroup = $ResourceGroupName
+        resourceGroup = $Context.ResourceGroupName
         location = $resolvedLocation
         properties = if ($resolvedProperties) { $resolvedProperties } else { @{} }
         tags = if ($resolvedTags) { $resolvedTags } else { @{} }
         relationships = @()
     }
 
-    $ResourceIndex[[string]$resourceId] = $modelResource
-    $ResourceIndex[$symbolicName] = $modelResource
+    $Context.ResourceIndex[[string]$resourceId] = $modelResource
+    $Context.ResourceIndex[$symbolicName] = $modelResource
 
     $results = New-Object System.Collections.Generic.List[object]
     $results.Add([PSCustomObject]$modelResource)
 
-    if ($Resource.PSObject.Properties.Name -contains 'resources' -and $null -ne $Resource.resources) {
+    if ($Resource.PSObject.Properties['resources'] -and $null -ne $Resource.resources) {
         foreach ($child in (Get-EnumerableResources -Resources $Resource.resources)) {
-            $childSourceFile = if ($child.PSObject.Properties.Name -contains 'sourceFile') { [string]$child.sourceFile } else { $SourceFile }
-            $childResults = Convert-ArmResourceToModel -Resource $child -TemplatePath $TemplatePath -Parameters $Parameters -Variables $Variables -ResourceIndex $ResourceIndex -ResourceGroupName $ResourceGroupName -SubscriptionId $SubscriptionId -Location $Location -DepthRemaining $DepthRemaining -ParentSymbolicName $symbolicName -SourceFile $childSourceFile
+            $childSourceFile = if ($child.PSObject.Properties['sourceFile']) { [string]$child.sourceFile } else { $SourceFile }
+            $childResults = Convert-ArmResourceToModel -Resource $child -Parameters $Parameters -Variables $Variables -Context $Context -DepthRemaining $DepthRemaining -ParentSymbolicName $symbolicName -SourceFile $childSourceFile
             foreach ($childResult in $childResults) {
                 $results.Add($childResult)
             }
         }
     }
 
-    if ($Resource.type -eq 'Microsoft.Resources/deployments' -and $Resource.PSObject.Properties.Name -contains 'properties') {
+    if ($Resource.type -eq 'Microsoft.Resources/deployments' -and $Resource.PSObject.Properties['properties']) {
         $deploymentProperties = $Resource.properties
         $deploymentTemplate = $null
-        if ($deploymentProperties -is [System.Management.Automation.PSCustomObject] -and $deploymentProperties.PSObject.Properties.Name -contains 'template') {
+        if ($deploymentProperties -is [System.Management.Automation.PSCustomObject] -and $deploymentProperties.PSObject.Properties['template']) {
             $deploymentTemplate = $deploymentProperties.template
         } elseif ($deploymentProperties -is [System.Collections.IDictionary] -and $deploymentProperties.Contains('template')) {
             $deploymentTemplate = $deploymentProperties['template']
@@ -812,7 +761,7 @@ function Convert-ArmResourceToModel {
 
         $templateHasResources = $false
         if ($null -ne $deploymentTemplate) {
-            if ($deploymentTemplate -is [System.Management.Automation.PSCustomObject] -and $deploymentTemplate.PSObject.Properties.Name -contains 'resources') {
+            if ($deploymentTemplate -is [System.Management.Automation.PSCustomObject] -and $deploymentTemplate.PSObject.Properties['resources']) {
                 $templateHasResources = $true
             } elseif ($deploymentTemplate -is [System.Collections.IDictionary] -and $deploymentTemplate.ContainsKey('resources')) {
                 $templateHasResources = $true
@@ -822,7 +771,7 @@ function Convert-ArmResourceToModel {
         if ($templateHasResources) {
             $nestedParameters = @{}
             $deploymentParamsObj = $null
-            if ($deploymentProperties -is [System.Management.Automation.PSCustomObject] -and $deploymentProperties.PSObject.Properties.Name -contains 'parameters') {
+            if ($deploymentProperties -is [System.Management.Automation.PSCustomObject] -and $deploymentProperties.PSObject.Properties['parameters']) {
                 $deploymentParamsObj = $deploymentProperties.parameters
             } elseif ($deploymentProperties -is [System.Collections.IDictionary] -and $deploymentProperties.Contains('parameters')) {
                 $deploymentParamsObj = $deploymentProperties['parameters']
@@ -831,21 +780,21 @@ function Convert-ArmResourceToModel {
             if ($null -ne $deploymentParamsObj -and $deploymentParamsObj -is [System.Management.Automation.PSCustomObject]) {
                 foreach ($parameterProperty in $deploymentParamsObj.PSObject.Properties) {
                     $paramRawValue = $null
-                    if ($parameterProperty.Value -is [System.Management.Automation.PSCustomObject] -and $parameterProperty.Value.PSObject.Properties.Name -contains 'value') {
+                    if ($parameterProperty.Value -is [System.Management.Automation.PSCustomObject] -and $parameterProperty.Value.PSObject.Properties['value']) {
                         $paramRawValue = $parameterProperty.Value.value
                     } elseif ($parameterProperty.Value -is [System.Collections.IDictionary] -and $parameterProperty.Value.Contains('value')) {
                         $paramRawValue = $parameterProperty.Value['value']
                     }
                     $nestedParameters[$parameterProperty.Name] = @{
-                        value = Resolve-ArmExpression -Value $paramRawValue -Template $null -Parameters $Parameters -Variables $Variables -ResourceIndex $ResourceIndex -TemplatePath $TemplatePath -ResourceGroupName $ResourceGroupName -SubscriptionId $SubscriptionId -Location $Location -DepthRemaining $DepthRemaining
+                        value = Resolve-ArmExpression -Value $paramRawValue -Template $null -Parameters $Parameters -Variables $Variables -Context $Context -DepthRemaining $DepthRemaining
                     }
                 }
             }
 
             $nestedVariables = @{}
-            $nestedSourceFile = if ($SourceFile) { $SourceFile } else { [System.IO.Path]::GetFileName($TemplatePath) }
+            $nestedSourceFile = if ($SourceFile) { $SourceFile } else { [System.IO.Path]::GetFileName($Context.TemplatePath) }
             foreach ($nestedResource in (Get-EnumerableResources -Resources $deploymentTemplate.resources)) {
-                $nestedResults = Convert-ArmResourceToModel -Resource $nestedResource -TemplatePath $TemplatePath -Parameters $nestedParameters -Variables $nestedVariables -ResourceIndex $ResourceIndex -ResourceGroupName $ResourceGroupName -SubscriptionId $SubscriptionId -Location $Location -DepthRemaining $DepthRemaining -SourceFile $nestedSourceFile
+                $nestedResults = Convert-ArmResourceToModel -Resource $nestedResource -Parameters $nestedParameters -Variables $nestedVariables -Context $Context -DepthRemaining $DepthRemaining -SourceFile $nestedSourceFile
                 foreach ($nestedResult in $nestedResults) {
                     $results.Add($nestedResult)
                 }
@@ -853,7 +802,7 @@ function Convert-ArmResourceToModel {
         }
     }
 
-    return $results.ToArray()
+    $results.ToArray()
 }
 
 try {
@@ -884,7 +833,7 @@ try {
         }
 
         $template = Get-Content -LiteralPath $armTemplatePath -Raw -ErrorAction Stop | ConvertFrom-Json -Depth 100
-        $parameterOverrides = Get-ParameterOverrides -ParameterFilePath $resolvedParamFile
+        $parameterOverrides = Get-ParameterOverrides -ParameterFilePath $resolvedParamFile -WorkingDirectory $temporaryDirectory
         $parameters = Get-ArmParameters -Template $template -Overrides $parameterOverrides
         $variables = @{}
         $resourceIndex = @{}
@@ -894,20 +843,28 @@ try {
         $depthLevel = Get-DepthLevel -DepthName $Depth
         $sourceRoot = Split-Path -Path $resolvedBicepFile -Parent
 
+        $context = @{
+            ResourceIndex     = $resourceIndex
+            TemplatePath      = $resolvedBicepFile
+            ResourceGroupName = $resourceGroupName
+            SubscriptionId    = $subscriptionId
+            Location          = $location
+        }
+
         $resources = New-Object System.Collections.Generic.List[object]
         Write-Diag 'Enumerating top-level ARM resources.'
         $topLevelResources = Get-EnumerableResources -Resources $template.resources
         Write-Diag ("Top-level ARM resource count: " + $topLevelResources.Count)
         foreach ($resource in $topLevelResources) {
             Write-Diag 'Converting top-level ARM resource.'
-            $sourceFile = if ($resource.PSObject.Properties.Name -contains 'sourceFile') {
+            $sourceFile = if ($resource.PSObject.Properties['sourceFile']) {
                 [string]$resource.sourceFile
             }
             else {
                 [System.IO.Path]::GetRelativePath($sourceRoot, $resolvedBicepFile)
             }
 
-            $convertedResources = Convert-ArmResourceToModel -Resource $resource -TemplatePath $resolvedBicepFile -Parameters $parameters -Variables $variables -ResourceIndex $resourceIndex -ResourceGroupName $resourceGroupName -SubscriptionId $subscriptionId -Location $location -DepthRemaining $depthLevel -SourceFile $sourceFile
+            $convertedResources = Convert-ArmResourceToModel -Resource $resource -Parameters $parameters -Variables $variables -Context $context -DepthRemaining $depthLevel -SourceFile $sourceFile
             foreach ($convertedResource in $convertedResources) {
                 $resources.Add($convertedResource)
             }

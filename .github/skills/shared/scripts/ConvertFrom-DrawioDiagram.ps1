@@ -1,4 +1,4 @@
-#Requires -Version 7.0
+#Requires -Version 5.1
 <#
 .SYNOPSIS
 Parses a Draw.io diagram file and emits an Azure resource model.
@@ -49,11 +49,8 @@ function Get-AttributeValue {
         [string]$Name
     )
 
-    if ($null -ne $Node.GetAttribute($Name)) {
-        return $Node.GetAttribute($Name)
-    }
-
-    return $null
+    # XmlElement.GetAttribute returns '' (never $null) for a missing attribute.
+    $Node.GetAttribute($Name)
 }
 
 function Get-ResourceTypeFromImagePath {
@@ -72,7 +69,7 @@ function Get-ResourceTypeFromImagePath {
         [hashtable]$FallbackLookup
     )
 
-    $normalized = $ImagePath.Trim().Replace('\\', '/')
+    $normalized = $ImagePath.Trim().Replace('\', '/')
     $candidates = @()
 
     if ($ReverseLookup.ContainsKey($normalized)) {
@@ -106,7 +103,7 @@ function Get-ResourceTypeFromImagePath {
         }
     }
 
-    return $candidates[0]
+    $candidates[0]
 }
 
 function Get-ContainerTypeFromStyle {
@@ -121,7 +118,7 @@ function Get-ContainerTypeFromStyle {
     if ($Style -match 'fillColor=#e1d5e7') { return 'Microsoft.Network/virtualNetworks/subnets' }
     if ($Style -match 'fillColor=#f5f5f5') { return 'Microsoft.Resources/resourceGroups' }
 
-    return $null
+    $null
 }
 
 function Get-RelationshipTypeFromStyle {
@@ -136,7 +133,7 @@ function Get-RelationshipTypeFromStyle {
     if ($Style -match 'strokeColor=#00A4EF') { return 'peers' }
     if ($Style -match 'strokeColor=#999999' -and $Style -match 'dashed=1') { return 'depends' }
 
-    return 'connects'
+    'connects'
 }
 
 function Get-NormalizedName {
@@ -150,7 +147,7 @@ function Get-NormalizedName {
         return ''
     }
 
-    return [System.Net.WebUtility]::HtmlDecode($Value).Replace("`r", '').Replace("`n", ' ').Trim()
+    [System.Net.WebUtility]::HtmlDecode($Value).Replace("`r", '').Replace("`n", ' ').Trim()
 }
 
 try {
@@ -216,8 +213,15 @@ try {
     [xml]$diagramXml = Get-Content -LiteralPath $DiagramPath -Raw -ErrorAction Stop
 
     $cells = @($diagramXml.SelectNodes('//*[local-name()="mxCell"]'))
+    $cellById = @{}
+    foreach ($cell in $cells) {
+        $cellId = $cell.GetAttribute('id')
+        if ($cellId) { $cellById[$cellId] = $cell }
+    }
+
     $resources = New-Object System.Collections.Generic.List[object]
     $resourceMap = @{}
+    $parentByResourceId = @{}
 
     foreach ($cell in $cells) {
         $id = Get-AttributeValue -Node $cell -Name 'id'
@@ -277,7 +281,7 @@ try {
 
         $containerName = $null
         if ($parent -and $parent -ne '1') {
-            $containerCell = $cells | Where-Object { (Get-AttributeValue -Node $_ -Name 'id') -eq $parent } | Select-Object -First 1
+            $containerCell = $cellById[$parent]
             if ($containerCell) {
                 $containerName = Get-NormalizedName -Value (Get-AttributeValue -Node $containerCell -Name 'value')
                 if ([string]::IsNullOrWhiteSpace($containerName)) {
@@ -297,6 +301,7 @@ try {
         }
 
         $resourceMap[$id] = $resource
+        $parentByResourceId[$id] = $parent
         $resources.Add($resource)
     }
 
@@ -322,16 +327,7 @@ try {
     }
 
     foreach ($resource in $resourceMap.Values) {
-        $parentId = $null
-        foreach ($cell in $cells) {
-            $id = Get-AttributeValue -Node $cell -Name 'id'
-            if ($id -ne $resource.id) {
-                continue
-            }
-
-            $parentId = Get-AttributeValue -Node $cell -Name 'parent'
-            break
-        }
+        $parentId = $parentByResourceId[$resource.id]
 
         if ($parentId -and $parentId -ne '1' -and $resourceMap.ContainsKey($parentId)) {
             $resource.relationships += [PSCustomObject]@{
