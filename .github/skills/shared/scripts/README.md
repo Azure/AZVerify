@@ -15,7 +15,7 @@ If a script cannot run because a prerequisite is missing, the calling skill shou
 | Script | Purpose | Typical invocation | Key outputs / notes |
 |---|---|---|---|
 | `_Common.ps1` | Shared helper functions for JSON IO, diagnostics, matching helpers, and exit handling. | Dot-source from other scripts. | Not called directly by skills. |
-| `Test-AzureAuth.ps1` | Verifies an active Azure session before Azure operations. | `pwsh .github/skills/shared/scripts/Test-AzureAuth.ps1` | Emits a JSON auth status object; non-zero exit is a hard gate. |
+| `Test-AzureAuth.ps1` | Verifies an active Azure session before Azure operations. | `pwsh .github/skills/shared/scripts/Test-AzureAuth.ps1` | Emits a JSON auth status object; non-zero exit indicates no Azure session. |
 | `ConvertFrom-DrawioDiagram.ps1` | Parses a `.drawio` file into the shared resource model. | `pwsh .github/skills/shared/scripts/ConvertFrom-DrawioDiagram.ps1 -DiagramPath <file>` | Used by diagram-to-Bicep and sync skills. |
 | `ConvertFrom-BicepTemplate.ps1` | Compiles/parses Bicep into the shared resource model. | `pwsh .github/skills/shared/scripts/ConvertFrom-BicepTemplate.ps1 -BicepFile <main.bicep> [-ParamFile <file>]` | Prefers `az bicep build` or `bicep build`; emits normalized resources. |
 | `Select-AzureResources.ps1` | Applies shared inclusion/exclusion rules for diagram or Bicep scenarios. | `pwsh .github/skills/shared/scripts/Select-AzureResources.ps1 -InputFile <model.json> -Mode diagram` | Uses `data/resource-filter-rules.json`. |
