@@ -59,6 +59,18 @@ $ErrorActionPreference = 'Stop'
 
 $propertyConfigPath = Resolve-Path -Path (Join-Path $PSScriptRoot '..\data\azure-property-paths.json') -ErrorAction Stop
 $propertyConfig = Get-Content -LiteralPath $propertyConfigPath -Raw | ConvertFrom-Json
+
+# Index config once so per-resource lookups are O(1) instead of rescanning the arrays.
+$resourceTypeConfigIndex = @{}
+foreach ($resourceTypeEntry in $propertyConfig.resourceTypes) {
+    $resourceTypeConfigIndex[[string]$resourceTypeEntry.resourceType] = $resourceTypeEntry
+}
+
+$compositeRuleIndex = @{}
+foreach ($compositeRule in $propertyConfig.compositeRules) {
+    $compositeRuleIndex[('{0}|{1}' -f $compositeRule.resourceType, $compositeRule.property)] = $compositeRule
+}
+
 $isOfflineMode = $PSCmdlet.ParameterSetName -eq 'Offline'
 
 function ConvertTo-Hashtable {
@@ -175,13 +187,9 @@ function Get-ResourceTypeConfig {
         [string]$ResourceType
     )
 
-    foreach ($entry in $propertyConfig.resourceTypes) {
-        if ($entry.resourceType -eq $ResourceType) {
-            return $entry
-        }
+    if ($resourceTypeConfigIndex.ContainsKey($ResourceType)) {
+        $resourceTypeConfigIndex[$ResourceType]
     }
-
-    return $null
 }
 
 function Get-CompositePropertyValue {
@@ -210,7 +218,7 @@ function Get-CompositePropertyValue {
         return ($parts -join ':')
     }
 
-    return ($parts -join ' ')
+    ($parts -join ' ')
 }
 
 function Get-EnrichedProperties {
@@ -233,9 +241,8 @@ function Get-EnrichedProperties {
         $path = [string]$property.armJsonPath
         if ($path -like 'composite:*') {
             $compositeName = $path.Substring('composite:'.Length)
-            $rule = $propertyConfig.compositeRules | Where-Object {
-                $_.resourceType -eq $Resource.type -and $_.property -eq $compositeName
-            } | Select-Object -First 1
+            $compositeKey = '{0}|{1}' -f $Resource.type, $compositeName
+            $rule = if ($compositeRuleIndex.ContainsKey($compositeKey)) { $compositeRuleIndex[$compositeKey] } else { $null }
 
             if ($null -ne $rule) {
                 $compositeValue = Get-CompositePropertyValue -Rule $rule -ResourceJson $ResourceJson
