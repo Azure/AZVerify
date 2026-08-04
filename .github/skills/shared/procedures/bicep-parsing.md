@@ -1,10 +1,45 @@
-# Bicep Parsing Procedure
+# Bicep Parsing Script Contract
 
-Parse Bicep templates into a structured resource model for comparison. Referenced by skills that analyze existing Bicep files.
+Canonical contract for `.github/skills/shared/scripts/ConvertFrom-BicepTemplate.ps1`. Referenced by skills that analyze existing Bicep files.
 
 ---
 
-## Procedure
+## Script
+
+- **Path**: `.github/skills/shared/scripts/ConvertFrom-BicepTemplate.ps1`
+- **Purpose**: Parse Bicep templates and optional `.bicepparam` values into the shared Azure resource model.
+
+## Invocation
+
+```powershell
+pwsh .github/skills/shared/scripts/ConvertFrom-BicepTemplate.ps1 -BicepFile <main.bicep> [-ParamFile <file.bicepparam>] [-Depth shallow|standard|deep] [-OutFile <path>]
+```
+
+## Parameters
+
+- `-BicepFile` — required path to the entry Bicep file
+- `-ParamFile` — optional path to the `.bicepparam` file
+- `-Depth` — optional extraction depth; defaults to `standard`
+- `-OutFile` — optional output path; otherwise JSON is written to stdout
+
+## Output
+
+- **stdout**: Single resource model JSON object conforming to `.github/skills/shared/azure-resource-model.md`
+- **stderr**: Diagnostics only
+
+## Exit Codes
+
+- `0` — parse succeeded
+- non-zero — parse failed; stop and report the error
+
+## Notes
+
+- The script prefers `az bicep build`/`bicep build` and exits non-zero when the CLI is unavailable.
+- If `pwsh` or the script is unavailable, continue with the fallback procedure.
+
+## Fallback
+
+Use this fallback procedure when `pwsh` or the script is unavailable. If the script has already been invoked and failed, do not attempt the fallback.
 
 ### 1. Read Parameter Values
 
