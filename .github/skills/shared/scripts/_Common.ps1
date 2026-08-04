@@ -76,7 +76,7 @@ function Write-ResourceModel {
         [string]$OutFile
     )
 
-    $json = $Model | ConvertTo-Json -Depth 100
+    $json = $Model | ConvertTo-Json
 
     if ($OutFile) {
         Set-Content -LiteralPath $OutFile -Value $json -Encoding utf8

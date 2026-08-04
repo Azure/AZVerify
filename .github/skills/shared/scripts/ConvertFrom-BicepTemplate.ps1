@@ -1,4 +1,4 @@
-#Requires -Version 7.0
+#Requires -Version 5.1
 <#
 .SYNOPSIS
 Parses a Bicep template and emits an Azure resource model.
@@ -680,8 +680,6 @@ function Convert-ArmResourceToModel {
     if (-not $Resource.PSObject.Properties['type']) {
         return @()
     }
-    Write-Diag 'Resource type property confirmed.'
-
     Write-Diag 'Resolving resource name.'
     $resolvedName = $null
     if ($Resource.PSObject.Properties['name']) {

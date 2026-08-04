@@ -288,7 +288,7 @@ try {
                     $containerName = (Get-AttributeValue -Node $containerCell -Name 'id')
                 }
 
-                $resource.location = $containerName
+                $resource.properties.containerName = $containerName
 
                 if ((Get-ContainerTypeFromStyle -Style (Get-AttributeValue -Node $containerCell -Name 'style')) -eq 'Microsoft.Resources/resourceGroups') {
                     $resource.resourceGroup = $containerName
