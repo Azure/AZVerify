@@ -84,3 +84,9 @@ Output the parsed Bicep resource model in chat for user verification. Schema per
 ```
 
 ## Depth Levels
+
+| Depth | What's Extracted | Use Case |
+|---|---|---|
+| Shallow | Type, name, file location | Quick comparison / drift detection |
+| Standard | Above + params, parent refs, conditions | Sync, what-if |
+| Deep | Above + all property values resolved | Policy check, detailed what-if |

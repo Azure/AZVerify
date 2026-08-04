@@ -74,3 +74,7 @@ Apply rules in order. Stop at the first match.
 
 | Status | Indicator |
 |---|---|
+| In Sync | ✅ |
+| In Sync (name differs) | ✅ (with note) |
+| Diagram Only / Bicep Only | ⬜ |
+| Azure Only | 🔷 |
