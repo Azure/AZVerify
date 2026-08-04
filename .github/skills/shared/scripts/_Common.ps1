@@ -1,10 +1,14 @@
-# Common utility functions for AZVerify scripts.
-# Some functions are already defined for later use
+#Requires -Version 7.0
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
 function Write-Diag {
-    # Write a diagnostic message to the error stream, prefixed with "[AzVerify]".
+    <#
+    .SYNOPSIS
+    Writes a diagnostic message to stderr.
+    .PARAMETER Message
+    The diagnostic message to write.
+    #>
     [CmdletBinding()]
     param(
         [Parameter(Mandatory = $true)]
@@ -15,9 +19,21 @@ function Write-Diag {
 }
 
 function Read-ResourceModel {
-    # Read a resource model from a JSON file or standard input and return it as a PowerShell object.
+    <#
+    .SYNOPSIS
+    Reads a resource model from a JSON file or stdin.
+    .PARAMETER InputFile
+    Optional path to the resource model JSON file. If omitted, reads from stdin.
+    .OUTPUTS
+    System.Management.Automation.PSCustomObject
+    .EXAMPLE
+    Read-ResourceModel -InputFile 'model.json'
+    .EXAMPLE
+    Get-Content model.json | Read-ResourceModel
+    #>
     [CmdletBinding()]
     param(
+        [Parameter()]
         [string]$InputFile
     )
 
@@ -40,12 +56,24 @@ function Read-ResourceModel {
 }
 
 function Write-ResourceModel {
-    # Write a resource model to a JSON file or standard output.
+    <#
+    .SYNOPSIS
+    Writes a resource model as JSON to a file or stdout.
+    .PARAMETER Model
+    The resource model object to serialize.
+    .PARAMETER OutFile
+    Optional path to write the JSON output. If omitted, writes to stdout.
+    .EXAMPLE
+    Write-ResourceModel -Model $model -OutFile 'output.json'
+    .EXAMPLE
+    Write-ResourceModel -Model $model
+    #>
     [CmdletBinding()]
     param(
         [Parameter(Mandatory = $true)]
         $Model,
 
+        [Parameter()]
         [string]$OutFile
     )
 
@@ -60,7 +88,19 @@ function Write-ResourceModel {
 }
 
 function Get-LevenshteinDistance {
-    # Calculate the Levenshtein distance between two strings.
+    <#
+    .SYNOPSIS
+    Calculates the Levenshtein edit distance between two strings.
+    .PARAMETER Left
+    The first string.
+    .PARAMETER Right
+    The second string.
+    .OUTPUTS
+    System.Int32
+    .EXAMPLE
+    Get-LevenshteinDistance -Left 'vnet01' -Right 'vnet-01'
+    # Returns 1
+    #>
     [CmdletBinding()]
     param(
         [Parameter(Mandatory = $true)]
@@ -70,31 +110,20 @@ function Get-LevenshteinDistance {
         [string]$Right
     )
 
-    if ($null -eq $Left) {
-        $left = ''
-    }
-    else {
-        $left = [string]$Left
-    }
+    $leftStr = if ($null -eq $Left) { '' } else { [string]$Left }
+    $rightStr = if ($null -eq $Right) { '' } else { [string]$Right }
 
-    if ($null -eq $Right) {
-        $right = ''
-    }
-    else {
-        $right = [string]$Right
-    }
+    if ($leftStr.Length -eq 0) { return $rightStr.Length }
+    if ($rightStr.Length -eq 0) { return $leftStr.Length }
 
-    if ($left.Length -eq 0) { return $right.Length }
-    if ($right.Length -eq 0) { return $left.Length }
+    $previous = [int[]](0..$rightStr.Length)
+    $current = New-Object int[] ($rightStr.Length + 1)
 
-    $previous = [int[]](0..$right.Length)
-    $current = New-Object int[] ($right.Length + 1)
-
-    for ($i = 1; $i -le $left.Length; $i++) {
+    for ($i = 1; $i -le $leftStr.Length; $i++) {
         $current[0] = $i
 
-        for ($j = 1; $j -le $right.Length; $j++) {
-            $cost = if ($left[$i - 1] -eq $right[$j - 1]) { 0 } else { 1 }
+        for ($j = 1; $j -le $rightStr.Length; $j++) {
+            $cost = if ($leftStr[$i - 1] -eq $rightStr[$j - 1]) { 0 } else { 1 }
             $current[$j] = [Math]::Min(
                 [Math]::Min($previous[$j] + 1, $current[$j - 1] + 1),
                 $previous[$j - 1] + $cost
@@ -106,16 +135,28 @@ function Get-LevenshteinDistance {
         $current = $temp
     }
 
-    return $previous[$right.Length]
+    return $previous[$rightStr.Length]
 }
 
 function Invoke-Exit {
-    # Exit the script with a given exit code and optional diagnostic message.   
+    <#
+    .SYNOPSIS
+    Writes an optional diagnostic message and exits the script with the given code.
+    .PARAMETER Code
+    The exit code. Use 0 for success, non-zero for failure.
+    .PARAMETER Message
+    Optional message written to stderr before exiting.
+    .EXAMPLE
+    Invoke-Exit -Code 0 -Message 'Done.'
+    .EXAMPLE
+    Invoke-Exit -Code 1 -Message 'Authentication failed.'
+    #>
     [CmdletBinding()]
     param(
         [Parameter(Mandatory = $true)]
         [int]$Code,
 
+        [Parameter()]
         [string]$Message
     )
 
