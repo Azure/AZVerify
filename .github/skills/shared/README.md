@@ -15,7 +15,7 @@ This folder contains the shared contracts, reference data, procedures, and scrip
 | `version-currency.md` | Version and runtime currency checks. |
 | `procedures/` | Script contracts and step-level procedures that skills reference instead of re-describing algorithms inline. |
 | `data/` | Machine-readable lookup data consumed by scripts. |
-| `scripts/` | PowerShell 7 automation that performs parsing, filtering, matching, discovery, and fixture validation. |
+| `scripts/` | PowerShell automation that performs parsing, filtering, matching, discovery, and fixture validation. |
 
 ## Architecture overview
 
@@ -66,7 +66,7 @@ All scripts live in `scripts/` and are designed to emit JSON to stdout or an out
 
 ### Runtime prerequisites
 
-- **PowerShell 5.1 or higher (`pwsh`)** is required.
+- **PowerShell 5.1 (powershell.exe) or higher (`pwsh`)** is required.
 - **Azure CLI (`az`)** is required for Azure-backed discovery and authentication checks.
 - **Bicep CLI support** is required for the primary Bicep build path. `ConvertFrom-BicepTemplate.ps1` can use `az bicep build` or standalone `bicep`.
 

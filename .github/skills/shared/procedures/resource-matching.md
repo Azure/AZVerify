@@ -36,12 +36,12 @@ pwsh .github/skills/shared/scripts/Compare-ResourceModels.ps1 -ModelA <model-a.j
 ## Notes
 
 - The script applies exact match, single-of-type match, substring/Levenshtein matching, child-resource context, and conditional-resource annotations.
-- If `pwsh` or the script is unavailable, continue with the fallback procedure.
+- If `pwsh`/`powershell.exe` or the script is unavailable, continue with the fallback procedure.
 
 
 ## Fallback
 
-Use this fallback procedure when `pwsh` or the script is unavailable. If the script has already been invoked and failed, do not attempt the fallback.
+Use this fallback procedure when `pwsh`/`powershell.exe` or the script is unavailable. If the script has already been invoked and failed, do not attempt the fallback.
 
 ## Matching Algorithm
 

@@ -35,11 +35,11 @@ pwsh .github/skills/shared/scripts/ConvertFrom-BicepTemplate.ps1 -BicepFile <mai
 ## Notes
 
 - The script prefers `az bicep build`/`bicep build` and exits non-zero when the CLI is unavailable.
-- If `pwsh` or the script is unavailable, continue with the fallback procedure.
+- If `pwsh`/`powershell.exe` or the script is unavailable, continue with the fallback procedure.
 
 ## Fallback
 
-Use this fallback procedure when `pwsh` or the script is unavailable. If the script has already been invoked and failed, do not attempt the fallback.
+Use this fallback procedure when `pwsh`/`powershell.exe` or the script is unavailable. If the script has already been invoked and failed, do not attempt the fallback.
 
 ### 1. Read Parameter Values
 

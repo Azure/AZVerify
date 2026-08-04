@@ -37,7 +37,7 @@ If you need script usage details, refer to the script contracts under `.github/s
 
 ### Script/pwsh Unavailable — MCP Fallback
 
-If `pwsh` or `Get-AzureResourceModel.ps1` cannot be executed (tool unavailable, binary not on PATH, or any invocation error), build the resource model directly through Azure MCP instead of stopping:
+If `pwsh`/`powershell.exe` or `Get-AzureResourceModel.ps1` cannot be executed (tool unavailable, binary not on PATH, or any invocation error), build the resource model directly through Azure MCP instead of stopping:
 
 1. **List resources** — call `mcp_azure_group_resource_list` (scoped to the target resource group or subscription) to enumerate resources. This substitutes for the script's `az resource list` discovery.
 2. **Enrich each resource** — for every resource, load its `resourceTypes[]` entry from `shared/data/azure-property-paths.json`. Prefer the entry's `mcpTool` to fetch the resource; if none is available, use the resource-type-specific Azure MCP tool (for example `mcp_azure_storage`, `mcp_azure_keyvault`, `mcp_azure_sql`) or fall back to `az resource show`.
@@ -49,7 +49,7 @@ If `pwsh` or `Get-AzureResourceModel.ps1` cannot be executed (tool unavailable, 
 ## Prerequisites Required
 
 This step requires either:
-- PowerShell 7 (pwsh) with Azure CLI (az) on PATH, OR
+- PowerShell 5.1 (powershell.exe) or higher (`pwsh`) with Azure CLI (az) on PATH, OR
 - The Azure MCP server available and connected
 
 Neither was available. Please install one of the above and try again.
