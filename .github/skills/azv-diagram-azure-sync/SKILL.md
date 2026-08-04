@@ -18,7 +18,8 @@ Compare a Draw.io Azure architecture diagram against a live Azure environment an
 - `.github/skills/shared/azure-resource-model.md` — Shared resource metadata model definition
 - `.github/skills/shared/azure-stencil-mapping.json` — Azure resource type to Draw.io stencil mapping (used for reverse-lookup and diagram generation)
 - `.github/skills/shared/azure-deployment-verification.md` — **Pre-deployment verification rules (MUST run before generating Azure update scripts)**
-- `.github/skills/shared/azure-resource-configs.md` — Per-resource-type configuration schemas with defaults
+- `.github/skills/shared/azure-resource-configs.md` — Per-resource-type configuration schemas with defaults and auto-detection rules
+- `.github/skills/shared/data/azure-property-paths.json` — Azure Property Retrieval Mapping (MCP tools, CLI fallbacks, ARM JSON paths, severity classifications)
 
 **Shared procedures** (MUST follow):
 - `.github/skills/shared/procedures/azure-authentication.md` — Azure session check procedure
@@ -42,7 +43,7 @@ Identify the Draw.io diagram, the Azure scope, and the comparison depth.
 
 Determine the depth mode from the user's request:
 - **Quick** (default): Existence-level comparison only — are the right resources deployed?
-- **Deep**: Existence + property-level comparison — checks every tracked configuration property (SKU, tier, size, security settings) against expected values from `azure-resource-configs.md`
+- **Deep**: Existence + property-level comparison — checks every tracked configuration property (SKU, tier, size, security settings) against expected values from `azure-property-paths.json`
 
 If the user says "deep", "detailed", "full", "property", or "configuration" → use deep mode. Otherwise default to quick.
 
@@ -131,13 +132,13 @@ Follow the matching algorithm in `.github/skills/shared/procedures/resource-matc
 
 For each resource matched in both models (In Sync or In Sync with name difference):
 
-1. **Retrieve full properties** from Azure using the "Azure Property Retrieval Mapping" in `azure-resource-configs.md`. Use the listed MCP tool (primary) or `az` CLI command (fallback) for each resource type. Extract all tracked properties using the ARM JSON paths specified in the configs.
+1. **Retrieve full properties** from Azure using the Azure Property Retrieval Mapping in `.github/skills/shared/data/azure-property-paths.json`. Use the listed MCP tool (primary) or `az` CLI command (fallback) for each resource type. Extract all tracked properties using the ARM JSON paths specified in the mapping.
 
-2. **Determine expected values**: Use diagram-specified values if available; otherwise use defaults from `azure-resource-configs.md`.
+2. **Determine expected values**: Use diagram-specified values if available; otherwise use defaults from `azure-property-paths.json`.
 
 3. **Normalize before comparing**: Case-insensitive for enum values (SKUs, tiers, regions). Boolean normalization (`true`/`"true"`/`"True"` → `true`). Empty collection equivalence (`[]`/`null`/absent → equal). Numeric strings (`"30"` = `30`). Region normalization (`"West Europe"` → `"westeurope"`).
 
-4. **Record property drifts** where normalized expected ≠ normalized actual, including property name, expected value (source: diagram/default), actual Azure value, and severity level from `azure-resource-configs.md`.
+4. **Record property drifts** where normalized expected ≠ normalized actual, including property name, expected value (source: diagram/default), actual Azure value, and severity level from `azure-property-paths.json`.
 
 5. **Refine classification**: Matched resources get sub-status: "all properties match" or "properties drifted" (with count per severity level).
 
@@ -267,7 +268,7 @@ If the user chooses no action, confirm the report is for reference only and sugg
 ## Important Notes
 
 - This skill operates **independently** — it does not require sketch-to-diagram or diagram-to-bicep.
-- **Quick mode**: Existence-level comparison only (type + name matching). **Deep mode**: Also compares all tracked properties from `azure-resource-configs.md` with severity classification (Critical/Warning/Info) and normalization rules.
+- **Quick mode**: Existence-level comparison only (type + name matching). **Deep mode**: Also compares all tracked properties from `azure-property-paths.json` with severity classification (Critical/Warning/Info) and normalization rules.
 - **When the diagram is updated (Step 8 or selective Step 10), Bicep files are automatically regenerated** if they already exist in the diagram's directory.
 - **Destructive operations always require explicit confirmation** — both for deleting Azure resources and removing diagram elements.
 - Filter out infrastructure resources per `.github/skills/shared/procedures/resource-filtering.md`.

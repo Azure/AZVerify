@@ -159,7 +159,7 @@ try {
         Invoke-Exit -Code 1 -Message "Stencil mapping file not found: $StencilMapping"
     }
 
-    $mapping = Get-Content -LiteralPath $StencilMapping -Raw -ErrorAction Stop | ConvertFrom-Json -Depth 100
+    $mapping = Get-Content -LiteralPath $StencilMapping -Raw -ErrorAction Stop | ConvertFrom-Json
     $reverseLookup = @{}
 
     foreach ($entry in $mapping.resourceTypes.PSObject.Properties) {

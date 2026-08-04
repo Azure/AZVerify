@@ -22,7 +22,8 @@ Deep-compare a Draw.io Azure architecture diagram against a live Azure environme
 - `.github/skills/shared/azure-resource-model.md` — Shared resource metadata model definition
 - `.github/skills/shared/azure-stencil-mapping.json` — Azure resource type to Draw.io stencil mapping (used for reverse-lookup and diagram generation)
 - `.github/skills/shared/azure-deployment-verification.md` — **Pre-deployment verification rules (MUST run before generating Azure update scripts)**
-- `.github/skills/shared/azure-resource-configs.md` — Per-resource-type configuration schemas with defaults, severity classifications, and Azure Property Retrieval Mapping (MCP tools, CLI fallbacks, ARM JSON paths)
+- `.github/skills/shared/azure-resource-configs.md` — Per-resource-type configuration schemas with defaults and auto-detection rules
+- `.github/skills/shared/data/azure-property-paths.json` — Azure Property Retrieval Mapping (MCP tools, CLI fallbacks, ARM JSON paths, severity classifications)
 
 **Shared procedures** (MUST follow):
 - `.github/skills/shared/procedures/azure-authentication.md` — Azure session check procedure
@@ -123,7 +124,7 @@ For each resource that exists in both the diagram and Azure (identified by type 
 
 **Retrieval process:**
 
-1. **Look up the resource type** in the "Azure Property Retrieval Mapping" section of `.github/skills/shared/azure-resource-configs.md` to find:
+1. **Look up the resource type** in `.github/skills/shared/data/azure-property-paths.json` (`resourceTypes[]`) to find:
    - The MCP tool to use (if one exists for this resource type)
    - The `az` CLI fallback command
    - The ARM JSON paths for each tracked property
@@ -134,10 +135,10 @@ For each resource that exists in both the diagram and Azure (identified by type 
 
 3. **Extract property values** using the ARM JSON paths from the mapping table. For each tracked property:
    - Navigate the JSON response using the documented path (e.g., `properties.hardwareProfile.vmSize`)
-   - Apply SKU extraction rules for `skuName`/`skuTier` properties (see "SKU Extraction Rules" in configs)
+   - Apply SKU extraction rules for `skuName`/`skuTier` properties (see `globalSkuRules[]` in `azure-property-paths.json`)
    - Apply composite property rules where noted (e.g., VM `osImage` assembled from `imageReference` fields)
 
-4. **Populate the resource model**: Store all extracted property values in the resource's `properties` object in the Azure resource model. During this skill's execution, the `properties` field SHALL be fully populated with all tracked properties from `azure-resource-configs.md` for matched resources.
+4. **Populate the resource model**: Store all extracted property values in the resource's `properties` object in the Azure resource model. During this skill's execution, the `properties` field SHALL be fully populated with all tracked properties from `azure-property-paths.json` for matched resources.
 
 5. **Show progress**: Display progress for each resource being queried:
    ```
@@ -174,11 +175,11 @@ Follow the matching algorithm in `.github/skills/shared/procedures/resource-matc
 
 After existence-level classification, perform property-level drift detection on all resources classified as "In Sync" or "In Sync (name differs)":
 
-1. **Look up the resource type** in `azure-resource-configs.md` to get the full list of tracked properties with their defaults and severity levels.
+1. **Look up the resource type** in `.github/skills/shared/data/azure-property-paths.json` to get the full list of tracked properties with their defaults and severity levels.
 
 2. **Determine expected values** for each property:
    - If the diagram's resource model specifies a value for the property → use the diagram value (source: `diagram`)
-   - If the diagram does not specify a value → use the default from `azure-resource-configs.md` (source: `default`)
+   - If the diagram does not specify a value → use the default from `azure-property-paths.json` (source: `default`)
 
 3. **Compare expected vs actual** for every tracked property using the normalization rules from "Property Value Normalization Rules" above:
    - Apply case-insensitive comparison for string/enum values
@@ -190,7 +191,7 @@ After existence-level classification, perform property-level drift detection on 
    - Property name
    - Expected value (and its source: `diagram` or `default`)
    - Actual Azure value
-   - Severity level (from the `Severity` column in `azure-resource-configs.md`)
+   - Severity level (from the `severity` field in `azure-property-paths.json`)
 
    For each property where normalized expected **=** normalized actual, record it separately as **confirmed in sync** — these will appear in the report's "Confirmed In Sync" table, not in the drift table. **Never mix matching and drifting properties in the same table.**
 
@@ -281,6 +282,6 @@ Confirm no changes were made and suggest related skills (diagram-azure-sync, dia
 
 - This skill operates **independently** — it does not require sketch-to-diagram or diagram-to-bicep.
 - **Destructive operations always require explicit confirmation.**
-- Property-level drift compares all tracked properties from `azure-resource-configs.md`, using defaults as expected values when the diagram doesn't specify a property. Properties are classified by severity (Critical/Warning/Info) and compared using normalization rules.
+- Property-level drift compares all tracked properties from `azure-property-paths.json`, using defaults as expected values when the diagram doesn't specify a property. Properties are classified by severity (Critical/Warning/Info) and compared using normalization rules.
 - Filter infrastructure resources per `.github/skills/shared/procedures/resource-filtering.md`.
 - Generated update scripts include their own confirmation prompts as defense in depth.

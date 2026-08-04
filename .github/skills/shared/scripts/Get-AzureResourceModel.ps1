@@ -57,7 +57,7 @@ $ErrorActionPreference = 'Stop'
 
 . "$PSScriptRoot/_Common.ps1"
 
-$propertyConfigPath = Resolve-Path -Path (Join-Path $PSScriptRoot '..\data\azure-property-paths.json') -ErrorAction Stop
+$propertyConfigPath = Resolve-Path -Path (Join-Path $PSScriptRoot '../data/azure-property-paths.json') -ErrorAction Stop
 $propertyConfig = Get-Content -LiteralPath $propertyConfigPath -Raw | ConvertFrom-Json
 
 # Index config once so per-resource lookups are O(1) instead of rescanning the arrays.
@@ -439,7 +439,13 @@ function Invoke-AzJson {
         return $null
     }
 
-    return $jsonText | ConvertFrom-Json
+    # Assign before returning: Windows PowerShell 5.1's ConvertFrom-Json does not
+    # enumerate array results onto the pipeline (PS 7+ does), so piping straight into
+    # 'return' silently collapses arrays to a single element. Assignment captures the
+    # array correctly in both versions; a plain 'return' of the variable then unrolls
+    # it consistently.
+    $parsedJson = $jsonText | ConvertFrom-Json
+    return $parsedJson
 }
 
 function Get-DiscoveredResources {
@@ -449,7 +455,10 @@ function Get-DiscoveredResources {
     if ($isOfflineMode) {
         $resolvedPath = Resolve-Path -LiteralPath $FromJson -ErrorAction Stop
         Write-Diag "Loading offline resource list from '$resolvedPath'."
-        return Get-Content -LiteralPath $resolvedPath -Raw | ConvertFrom-Json
+        # See comment in Invoke-AzJson: assign before returning to avoid PS 5.1's
+        # ConvertFrom-Json array-enumeration quirk.
+        $parsedJson = Get-Content -LiteralPath $resolvedPath -Raw | ConvertFrom-Json
+        return $parsedJson
     }
 
     $arguments = @('resource', 'list', '--output', 'json')
