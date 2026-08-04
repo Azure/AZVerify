@@ -17,7 +17,7 @@ pwsh .github/skills/shared/scripts/Select-AzureResources.ps1 -InputFile <resourc
 
 ## Parameters
 
-- `-InputFile` — required path to the input resource model JSON
+- `-InputFile` — optional path to the input resource model JSON; if omitted, reads JSON from stdin
 - `-Mode` — required filter mode: `diagram` or `bicep`
 - `-ExtraExclude` — optional additional resource names or type patterns to exclude
 - `-OutFile` — optional output path; otherwise JSON is written to stdout
