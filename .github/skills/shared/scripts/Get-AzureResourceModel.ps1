@@ -1,4 +1,3 @@
-#Requires -Version 7.0
 <#
 .SYNOPSIS
 Builds an Azure resource model from live Azure resources or captured az JSON.
@@ -59,7 +58,7 @@ $ErrorActionPreference = 'Stop'
 . "$PSScriptRoot/_Common.ps1"
 
 $propertyConfigPath = Resolve-Path -Path (Join-Path $PSScriptRoot '..\data\azure-property-paths.json') -ErrorAction Stop
-$propertyConfig = Get-Content -LiteralPath $propertyConfigPath -Raw | ConvertFrom-Json -Depth 100
+$propertyConfig = Get-Content -LiteralPath $propertyConfigPath -Raw | ConvertFrom-Json
 $isOfflineMode = $PSCmdlet.ParameterSetName -eq 'Offline'
 
 function ConvertTo-Hashtable {
@@ -434,7 +433,7 @@ function Invoke-AzJson {
         return $null
     }
 
-    return $jsonText | ConvertFrom-Json -Depth 100
+    return $jsonText | ConvertFrom-Json
 }
 
 function Get-DiscoveredResources {
@@ -444,7 +443,7 @@ function Get-DiscoveredResources {
     if ($isOfflineMode) {
         $resolvedPath = Resolve-Path -LiteralPath $FromJson -ErrorAction Stop
         Write-Diag "Loading offline resource list from '$resolvedPath'."
-        return Get-Content -LiteralPath $resolvedPath -Raw | ConvertFrom-Json -Depth 100
+        return Get-Content -LiteralPath $resolvedPath -Raw | ConvertFrom-Json
     }
 
     $arguments = @('resource', 'list', '--output', 'json')
@@ -554,7 +553,7 @@ try {
         try {
             Write-ResourceModel -Model $model -OutFile $tempInput
             & (Join-Path $PSScriptRoot 'Select-AzureResources.ps1') -InputFile $tempInput -Mode $Mode -OutFile $tempOutput
-            $model = Get-Content -LiteralPath $tempOutput -Raw | ConvertFrom-Json -Depth 100
+            $model = Get-Content -LiteralPath $tempOutput -Raw | ConvertFrom-Json
         }
         finally {
             foreach ($tempFile in @($tempInput, $tempOutput)) {
