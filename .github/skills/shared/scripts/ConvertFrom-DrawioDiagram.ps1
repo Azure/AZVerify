@@ -1,4 +1,4 @@
-#Requires -Version 7.0
+#Requires -Version 5.1
 <#
 .SYNOPSIS
 Parses a Draw.io diagram file and emits an Azure resource model.
