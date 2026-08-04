@@ -23,7 +23,10 @@ pwsh .github/skills/shared/scripts/Test-AzureAuth.ps1
 {
   "authenticated": true,
   "subscriptionName": "<name>",
-  "subscriptionId": "<id>"
+  "subscriptionId": "<id>",
+  "tenantId": "<tenant-id>",
+  "account": "<user-or-spn>",
+  "method": "AzPowerShell|AzureCLI"
 }
 ```
 
