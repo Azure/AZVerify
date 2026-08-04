@@ -171,7 +171,7 @@ function Get-ParameterOverrides {
         return @{}
     }
 
-    $document = ConvertFrom-Json -InputObject $content -Depth 100
+    $document = ConvertFrom-Json -InputObject $content
     $overrides = @{}
     if ($document.PSObject.Properties['parameters'] -and $null -ne $document.parameters) {
         foreach ($property in $document.parameters.PSObject.Properties) {
@@ -830,7 +830,7 @@ try {
             Invoke-Exit -Code 1 -Message 'Bicep CLI is unavailable. Install Azure CLI with Bicep support or the standalone bicep CLI.'
         }
 
-        $template = Get-Content -LiteralPath $armTemplatePath -Raw -ErrorAction Stop | ConvertFrom-Json -Depth 100
+        $template = Get-Content -LiteralPath $armTemplatePath -Raw -ErrorAction Stop | ConvertFrom-Json
         $parameterOverrides = Get-ParameterOverrides -ParameterFilePath $resolvedParamFile -WorkingDirectory $temporaryDirectory
         $parameters = Get-ArmParameters -Template $template -Overrides $parameterOverrides
         $variables = @{}

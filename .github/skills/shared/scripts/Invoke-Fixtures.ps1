@@ -178,7 +178,7 @@ foreach ($fixture in $fixtures) {
                     -LabelB 'Bicep' `
                     -OutFile $compareReportFile
 
-                $report = Get-Content -LiteralPath $compareReportFile -Raw | ConvertFrom-Json -Depth 100
+                $report = Get-Content -LiteralPath $compareReportFile -Raw | ConvertFrom-Json
                 $summary = $report.summary
                 Add-Result -Fixture $fixtureName -Test 'CompareModels' -Passed $true `
                     -Detail "InSync=$($summary.inSync) InSyncNameDiff=$($summary.inSyncNameDiff) DiagramOnly=$($summary.onlyA) BicepOnly=$($summary.onlyB)"

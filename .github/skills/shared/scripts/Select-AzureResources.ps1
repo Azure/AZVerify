@@ -47,7 +47,7 @@ $ErrorActionPreference = 'Stop'
 
 $rulePath = Join-Path $PSScriptRoot '..\data\resource-filter-rules.json'
 $rulePath = Resolve-Path -Path $rulePath -ErrorAction Stop
-$ruleDocument = Get-Content -LiteralPath $rulePath -Raw | ConvertFrom-Json -Depth 100
+$ruleDocument = Get-Content -LiteralPath $rulePath -Raw | ConvertFrom-Json
 $rules = $ruleDocument.rules
 
 $script:RegexCache = @{}

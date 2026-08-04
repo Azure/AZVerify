@@ -108,6 +108,9 @@ function Get-ParentContext {
     if ($parentId) {
         return $parentId.Trim().ToLowerInvariant()
     }
+    if ($Resource -and $Resource.PSObject.Properties['resourceGroup'] -and -not [string]::IsNullOrWhiteSpace([string]$Resource.resourceGroup)) {
+        return ([string]$Resource.resourceGroup).Trim().ToLowerInvariant()
+    }
 
     ''
 }
