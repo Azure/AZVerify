@@ -103,17 +103,13 @@ function Get-ParentContext {
         $Resource
     )
 
-    $context = ''
-    if ($Resource -and $Resource.PSObject.Properties['resourceGroup'] -and $Resource.resourceGroup) {
-        $context += $Resource.resourceGroup.Trim().ToLowerInvariant()
-    }
 
     $parentId = Get-ParentId -Resource $Resource
     if ($parentId) {
-        $context += '|' + $parentId.Trim().ToLowerInvariant()
+        return $parentId.Trim().ToLowerInvariant()
     }
 
-    $context
+    ''
 }
 
 function New-ResourceRecord {
