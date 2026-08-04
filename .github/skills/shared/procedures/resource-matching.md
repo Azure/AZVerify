@@ -19,8 +19,8 @@ pwsh .github/skills/shared/scripts/Compare-ResourceModels.ps1 -ModelA <model-a.j
 
 - `-ModelA` — required path to the first resource model JSON
 - `-ModelB` — required path to the second resource model JSON
-- `-LabelA` — required label for model A (for example `Diagram`)
-- `-LabelB` — required label for model B (for example `Azure` or `Bicep`)
+- `-LabelA` — optional label for model A (defaults to `ModelA`)
+- `-LabelB` — optional label for model B (defaults to `ModelB`)
 - `-OutFile` — optional output path; otherwise JSON is written to stdout
 
 ## Output
