@@ -1,14 +1,14 @@
 # AzVerify shared scripts
 
-These PowerShell 7 scripts provide the reusable implementation behind AzVerify skill workflows.
+These PowerShell scripts provide the reusable implementation behind AzVerify skill workflows.
 
 ## Prerequisites
 
-- **PowerShell 7 (`pwsh`)**
+- **PowerShell 5.1 and up (`pwsh`)**
 - **Azure CLI (`az`)** for Azure-backed scripts
 - **Bicep CLI support** via `az bicep` or standalone `bicep` for Bicep parsing/build flows
 
-If a script cannot run because a prerequisite is missing, the calling skill should report the prerequisite and stop.
+If a script cannot run because a prerequisite is missing, the calling skill should first check the availability of MCP servers. If they are not available, it should report the prerequisite and stop.
 
 ## Script usage
 
