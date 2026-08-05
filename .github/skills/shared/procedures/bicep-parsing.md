@@ -34,7 +34,7 @@ pwsh .github/skills/shared/scripts/ConvertFrom-BicepTemplate.ps1 -BicepFile <mai
 
 ## Notes
 
-- The script prefers `az bicep build`/`bicep build` and falls back to direct parsing when the CLI is unavailable.
+- The script requires `az bicep build` or standalone `bicep build`. If neither is available, the script exits with a non-zero code; the calling skill should then follow the inline fallback below.
 - If `pwsh` or the script is unavailable, use the inline fallback below.
 
 ## Script Unavailable — Inline Fallback

@@ -42,6 +42,7 @@ If `pwsh`/`powershell.exe` or the script cannot run, parse the diagram directly:
 
 1. Read the `.drawio` file as XML and load `.github/skills/shared/azure-stencil-mapping.json`.
 2. For each `<mxCell>` whose `style` contains an `image=...` value, reverse-look-up the image path in the stencil mapping to resolve the Azure resource `type`; use the cell `value` as the `name`.
-3. Treat container cells (VNet, subnet, resource group shapes) as parents; a cell whose `parent` is another resource cell gets a `contains` relationship from that parent.
-4. Classify `<mxCell edge="1">` elements as `connects` relationships between their `source` and `target` cells.
-5. Emit a resource model JSON conforming to `.github/skills/shared/azure-resource-model.md`. Skip cells with no stencil match.
+3. Skip any cell whose `id` ends with `-icon`; these are decorative icon overlays, not distinct resources.
+4. Treat container cells (VNet, subnet, resource group shapes) as parents; a cell whose `parent` is another resource cell gets a `contains` relationship from that parent.
+5. Classify each `<mxCell edge="1">` element as a relationship between its `source` and `target` cells. Determine the relationship type from the cell's `style` attribute: `strokeColor=#0078D4` → `connects`; `strokeColor=#E81123` → `secures`; `strokeColor=#00A4EF` → `peers`; `strokeColor=#999999` with `dashed=1` → `depends`. Default to `connects` when no recognized style is present.
+6. Emit a resource model JSON conforming to `.github/skills/shared/azure-resource-model.md`. Skip cells with no stencil match.

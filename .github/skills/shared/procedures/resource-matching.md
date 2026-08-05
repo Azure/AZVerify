@@ -44,6 +44,6 @@ If `pwsh`/`powershell.exe` or the script cannot run, compare the two model JSONs
 
 1. **Exact match** — same `type` and same `name` (case-insensitive) → **In Sync**.
 2. **Single-of-type match** — exactly one unmatched resource of a given `type` remains in each model → **In Sync (name differs)**, recording both names.
-3. **Near-name match** — same `type` with name similarity ≥ 0.7 (substring or Levenshtein) → **In Sync (name differs)**.
+3. **Near-name match** — same `type` with case-insensitive substring match, or Levenshtein distance ≤ 3 between names → **In Sync (name differs)**.
 4. Remaining unmatched resources in Model A → **`<LabelA>` Only**; in Model B → **`<LabelB>` Only**.
 5. Emit a match report JSON with `inSync`, `nameDifferent`, and per-label `only` arrays, plus summary counts. Annotate child and conditional resources where present.

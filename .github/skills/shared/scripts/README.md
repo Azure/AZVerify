@@ -5,7 +5,7 @@ These PowerShell scripts provide the reusable implementation behind AzVerify ski
 ## Prerequisites
 
 
-- **PowerShell 5.1 (`powershell.exe`) and up (`pwsh`)**
+- **PowerShell 7 (`pwsh`)** is preferred; **Windows PowerShell 5.1 (`powershell.exe`)** is also supported
 - **Azure CLI (`az`)** or **Az PowerShell module** for Azure-backed scripts (either is sufficient; `Test-AzureAuth.ps1` probes Az PowerShell first and falls back to Azure CLI)
 - **Bicep CLI support** via `az bicep` or standalone `bicep` for Bicep parsing/build flows
 
