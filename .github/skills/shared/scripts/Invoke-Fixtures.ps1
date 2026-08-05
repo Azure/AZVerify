@@ -180,8 +180,15 @@ foreach ($fixture in $fixtures) {
 
                 $report = Get-Content -LiteralPath $compareReportFile -Raw | ConvertFrom-Json
                 $summary = $report.summary
-                Add-Result -Fixture $fixtureName -Test 'CompareModels' -Passed $true `
-                    -Detail "InSync=$($summary.inSync) InSyncNameDiff=$($summary.inSyncNameDiff) DiagramOnly=$($summary.onlyA) BicepOnly=$($summary.onlyB)"
+                $matchedCount = $summary.inSync + $summary.inSyncNameDiff
+                $detail = "InSync=$($summary.inSync) InSyncNameDiff=$($summary.inSyncNameDiff) DiagramOnly=$($summary.onlyA) BicepOnly=$($summary.onlyB)"
+                if ($matchedCount -eq 0 -and $summary.total -gt 0) {
+                    Add-Result -Fixture $fixtureName -Test 'CompareModels' -Passed $false `
+                        -Detail "No resources matched between diagram and bicep models. $detail"
+                }
+                else {
+                    Add-Result -Fixture $fixtureName -Test 'CompareModels' -Passed $true -Detail $detail
+                }
             }
             catch {
                 Add-Result -Fixture $fixtureName -Test 'CompareModels' -Passed $false -Detail $_.Exception.Message

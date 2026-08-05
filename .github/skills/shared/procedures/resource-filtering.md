@@ -35,12 +35,12 @@ pwsh .github/skills/shared/scripts/Select-AzureResources.ps1 -InputFile <resourc
 ## Notes
 
 - The script applies type rules, `hidden-*` tag rules, and any extra exclusions.
-- If `pwsh` or the script is unavailable, continue with the fallback procedure.
+- If `pwsh`/`powershell.exe` or the script is unavailable, continue with the fallback procedure.
 
 
 ## Fallback
 
-Use this fallback procedure when `pwsh` or the script is unavailable. If the script has already been invoked and failed, do not attempt the fallback.
+Use this fallback procedure when `pwsh`/`powershell.exe` or the script is unavailable. If the script has already been invoked and failed, do not attempt the fallback.
 
 ## Exclusion Table
 

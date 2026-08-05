@@ -103,10 +103,23 @@ function Invoke-BicepCli {
     $commandArgs = $command.Prefix + @($SubCommand, '--file', $InputPath, '--outfile', $OutputPath)
 
     Write-Diag "Running 'bicep $SubCommand' with $($command.Executable)."
-    & $command.Executable @commandArgs 2>&1 | ForEach-Object {
-        if ($_ -is [string] -and -not [string]::IsNullOrWhiteSpace($_)) {
-            Write-Diag $_
+
+    # Merging native stderr into the pipeline (2>&1) and piping through a cmdlet causes
+    # Windows PowerShell 5.1 to raise a terminating NativeCommandError for any stderr
+    # output-even benign warnings-when $ErrorActionPreference is 'Stop'. Temporarily
+    # relax it around the native call so warnings are captured without aborting; actual
+    # failures are still detected via the $LASTEXITCODE check below.
+    $previousErrorActionPreference = $ErrorActionPreference
+    try {
+        $ErrorActionPreference = 'Continue'
+        & $command.Executable @commandArgs 2>&1 | ForEach-Object {
+            if ($_ -is [string] -and -not [string]::IsNullOrWhiteSpace($_)) {
+                Write-Diag $_
+            }
         }
+    }
+    finally {
+        $ErrorActionPreference = $previousErrorActionPreference
     }
 
     if ($LASTEXITCODE -ne 0) {
@@ -527,10 +540,12 @@ function Get-ObjectPropertyValue {
             if ($current -is [System.Management.Automation.PSCustomObject]) {
                 if (-not $current.PSObject.Properties[$propertyName]) { return $null }
                 $current = $current.$propertyName
-            } elseif ($current -is [System.Collections.IDictionary]) {
+            }
+            elseif ($current -is [System.Collections.IDictionary]) {
                 if (-not $current.Contains($propertyName)) { return $null }
                 $current = $current[$propertyName]
-            } else {
+            }
+            else {
                 $current = $current.$propertyName
             }
 
@@ -546,10 +561,12 @@ function Get-ObjectPropertyValue {
         if ($current -is [System.Management.Automation.PSCustomObject]) {
             if (-not $current.PSObject.Properties[$segment]) { return $null }
             $current = $current.$segment
-        } elseif ($current -is [System.Collections.IDictionary]) {
+        }
+        elseif ($current -is [System.Collections.IDictionary]) {
             if (-not $current.Contains($segment)) { return $null }
             $current = $current[$segment]
-        } else {
+        }
+        else {
             $current = $current.$segment
         }
     }
@@ -717,18 +734,18 @@ function Convert-ArmResourceToModel {
         $symbolicName = [string]$Resource.symbolicName
     }
     $modelResource = [ordered]@{
-        id = [string]$resourceId
-        symbolicName = $symbolicName
-        type = [string]$Resource.type
-        apiVersion = [string]$Resource.apiVersion
-        name = [string]$resolvedName
-        sourceFile = [string]$SourceFile
-        conditional = [bool]($Resource.PSObject.Properties['condition'] -and $null -ne $Resource.condition)
-        parent = $ParentSymbolicName
+        id            = [string]$resourceId
+        symbolicName  = $symbolicName
+        type          = [string]$Resource.type
+        apiVersion    = [string]$Resource.apiVersion
+        name          = [string]$resolvedName
+        sourceFile    = [string]$SourceFile
+        conditional   = [bool]($Resource.PSObject.Properties['condition'] -and $null -ne $Resource.condition)
+        parent        = $ParentSymbolicName
         resourceGroup = $Context.ResourceGroupName
-        location = $resolvedLocation
-        properties = if ($resolvedProperties) { $resolvedProperties } else { @{} }
-        tags = if ($resolvedTags) { $resolvedTags } else { @{} }
+        location      = $resolvedLocation
+        properties    = if ($resolvedProperties) { $resolvedProperties } else { @{} }
+        tags          = if ($resolvedTags) { $resolvedTags } else { @{} }
         relationships = @()
     }
 
@@ -753,7 +770,8 @@ function Convert-ArmResourceToModel {
         $deploymentTemplate = $null
         if ($deploymentProperties -is [System.Management.Automation.PSCustomObject] -and $deploymentProperties.PSObject.Properties['template']) {
             $deploymentTemplate = $deploymentProperties.template
-        } elseif ($deploymentProperties -is [System.Collections.IDictionary] -and $deploymentProperties.Contains('template')) {
+        }
+        elseif ($deploymentProperties -is [System.Collections.IDictionary] -and $deploymentProperties.Contains('template')) {
             $deploymentTemplate = $deploymentProperties['template']
         }
 
@@ -761,7 +779,8 @@ function Convert-ArmResourceToModel {
         if ($null -ne $deploymentTemplate) {
             if ($deploymentTemplate -is [System.Management.Automation.PSCustomObject] -and $deploymentTemplate.PSObject.Properties['resources']) {
                 $templateHasResources = $true
-            } elseif ($deploymentTemplate -is [System.Collections.IDictionary] -and $deploymentTemplate.ContainsKey('resources')) {
+            }
+            elseif ($deploymentTemplate -is [System.Collections.IDictionary] -and $deploymentTemplate.ContainsKey('resources')) {
                 $templateHasResources = $true
             }
         }
@@ -771,7 +790,8 @@ function Convert-ArmResourceToModel {
             $deploymentParamsObj = $null
             if ($deploymentProperties -is [System.Management.Automation.PSCustomObject] -and $deploymentProperties.PSObject.Properties['parameters']) {
                 $deploymentParamsObj = $deploymentProperties.parameters
-            } elseif ($deploymentProperties -is [System.Collections.IDictionary] -and $deploymentProperties.Contains('parameters')) {
+            }
+            elseif ($deploymentProperties -is [System.Collections.IDictionary] -and $deploymentProperties.Contains('parameters')) {
                 $deploymentParamsObj = $deploymentProperties['parameters']
             }
 
@@ -780,7 +800,8 @@ function Convert-ArmResourceToModel {
                     $paramRawValue = $null
                     if ($parameterProperty.Value -is [System.Management.Automation.PSCustomObject] -and $parameterProperty.Value.PSObject.Properties['value']) {
                         $paramRawValue = $parameterProperty.Value.value
-                    } elseif ($parameterProperty.Value -is [System.Collections.IDictionary] -and $parameterProperty.Value.Contains('value')) {
+                    }
+                    elseif ($parameterProperty.Value -is [System.Collections.IDictionary] -and $parameterProperty.Value.Contains('value')) {
                         $paramRawValue = $parameterProperty.Value['value']
                     }
                     $nestedParameters[$parameterProperty.Name] = @{
@@ -859,7 +880,13 @@ try {
                 [string]$resource.sourceFile
             }
             else {
-                [System.IO.Path]::GetRelativePath($sourceRoot, $resolvedBicepFile)
+                Push-Location -LiteralPath $sourceRoot
+                try {
+                    (Resolve-Path -LiteralPath $resolvedBicepFile -Relative) -replace '^\.[\\/]', ''
+                }
+                finally {
+                    Pop-Location
+                }
             }
 
             $convertedResources = Convert-ArmResourceToModel -Resource $resource -Parameters $parameters -Variables $variables -Context $context -DepthRemaining $depthLevel -SourceFile $sourceFile
@@ -873,7 +900,7 @@ try {
                 $parentResource = $resourceIndex[[string]$resource.parent]
                 $resource.relationships += [PSCustomObject]@{
                     targetId = $parentResource.id
-                    type = 'contains'
+                    type     = 'contains'
                 }
             }
         }

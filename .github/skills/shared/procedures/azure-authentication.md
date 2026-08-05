@@ -35,7 +35,7 @@ pwsh .github/skills/shared/scripts/Test-AzureAuth.ps1
 ## Exit Codes
 
 - `0` — authenticated; continue
-- non-zero — no Azure session; **HARD GATE**
+- non-zero — no Azure session.
 
 ## Failure Handling
 
@@ -57,7 +57,7 @@ After authenticating, run this skill again.
 
 ## Script/pwsh Unavailable — MCP Fallback
 
-If `pwsh` or the script cannot be executed (tool unavailable, binary not on PATH, or any invocation error), attempt an **Azure MCP auth probe** before stopping:
+If `pwsh`/`powershell.exe` or the script cannot be executed (tool unavailable, binary not on PATH, or any invocation error), attempt an **Azure MCP auth probe** before stopping:
 
 1. Call `mcp_azure_subscription_list` (no arguments needed).
 2. **If it returns a list of subscriptions** — the user is authenticated. Extract `subscriptionName` and `subscriptionId` from the first returned subscription to substitute for the script's JSON output. Continue execution as if the script exited `0`.
@@ -68,7 +68,7 @@ If `pwsh` or the script cannot be executed (tool unavailable, binary not on PATH
 ## Prerequisites Required
 
 This skill requires either:
-- PowerShell 7 (pwsh) with Azure CLI (az) on PATH, OR
+- PowerShell 5.1 (powershell.exe) or higher (`pwsh`) with Azure CLI (az) on PATH, OR
 - The Azure MCP server available and connected
 
 Neither was available. Please install one of the above and try again.

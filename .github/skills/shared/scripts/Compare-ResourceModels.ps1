@@ -131,126 +131,132 @@ function New-ResourceRecord {
     }
 }
 
-$baseA = Read-ResourceModel -InputFile $ModelA
-$baseB = Read-ResourceModel -InputFile $ModelB
-$resourcesA = if ($baseA.resources) { @($baseA.resources) } else { @() }
-$resourcesB = if ($baseB.resources) { @($baseB.resources) } else { @() }
+try {
+    $baseA = Read-ResourceModel -InputFile $ModelA
+    $baseB = Read-ResourceModel -InputFile $ModelB
+    $resourcesA = if ($baseA.resources) { @($baseA.resources) } else { @() }
+    $resourcesB = if ($baseB.resources) { @($baseB.resources) } else { @() }
 
-$recordsA = @($resourcesA | ForEach-Object { New-ResourceRecord -Resource $_ })
-$recordsB = @($resourcesB | ForEach-Object { New-ResourceRecord -Resource $_ })
+    $recordsA = @($resourcesA | ForEach-Object { New-ResourceRecord -Resource $_ })
+    $recordsB = @($resourcesB | ForEach-Object { New-ResourceRecord -Resource $_ })
 
-$matchedA = [System.Collections.Generic.HashSet[object]]::new()
-$matchedB = [System.Collections.Generic.HashSet[object]]::new()
-$comparisonMatches = [System.Collections.Generic.List[object]]::new()
+    $matchedA = [System.Collections.Generic.HashSet[object]]::new()
+    $matchedB = [System.Collections.Generic.HashSet[object]]::new()
+    $comparisonMatches = [System.Collections.Generic.List[object]]::new()
 
-# Rule 1: Type + exact name + parent-context match, resolved via a key index so each
-# candidate lookup is O(1) instead of scanning the full B list per A resource.
-$exactIndexB = @{}
-foreach ($rb in $recordsB) {
-    $key = "$($rb.Type)|$($rb.Name)|$($rb.Context)"
-    if (-not $exactIndexB.ContainsKey($key)) {
-        $exactIndexB[$key] = [System.Collections.Generic.Queue[object]]::new()
+    # Rule 1: Type + exact name + parent-context match, resolved via a key index so each
+    # candidate lookup is O(1) instead of scanning the full B list per A resource.
+    $exactIndexB = @{}
+    foreach ($rb in $recordsB) {
+        $key = "$($rb.Type)|$($rb.Name)|$($rb.Context)"
+        if (-not $exactIndexB.ContainsKey($key)) {
+            $exactIndexB[$key] = [System.Collections.Generic.Queue[object]]::new()
+        }
+        $exactIndexB[$key].Enqueue($rb)
     }
-    $exactIndexB[$key].Enqueue($rb)
-}
 
-foreach ($ra in $recordsA) {
-    $key = "$($ra.Type)|$($ra.Name)|$($ra.Context)"
-    if ($exactIndexB.ContainsKey($key) -and $exactIndexB[$key].Count -gt 0) {
-        $rb = $exactIndexB[$key].Dequeue()
-        $comparisonMatches.Add(@{ status = 'In Sync'; resourceA = $ra.Resource; resourceB = $rb.Resource; note = 'Exact type and name match' })
-        [void]$matchedA.Add($ra)
-        [void]$matchedB.Add($rb)
-    }
-}
-
-# Group remaining candidates by type + parent-context once, so Rule 2/3 look up a
-# single bucket per A resource instead of re-filtering both full lists each time.
-$typeGroupA = @{}
-foreach ($ra in $recordsA) {
-    $key = "$($ra.Type)|$($ra.Context)"
-    if (-not $typeGroupA.ContainsKey($key)) {
-        $typeGroupA[$key] = [System.Collections.Generic.List[object]]::new()
-    }
-    $typeGroupA[$key].Add($ra)
-}
-
-$typeGroupB = @{}
-foreach ($rb in $recordsB) {
-    $key = "$($rb.Type)|$($rb.Context)"
-    if (-not $typeGroupB.ContainsKey($key)) {
-        $typeGroupB[$key] = [System.Collections.Generic.List[object]]::new()
-    }
-    $typeGroupB[$key].Add($rb)
-}
-
-# Rule 2 and 3: Type match with unique count or fuzzy name.
-foreach ($ra in $recordsA) {
-    if ($matchedA.Contains($ra)) { continue }
-
-    $key = "$($ra.Type)|$($ra.Context)"
-    $groupA = if ($typeGroupA.ContainsKey($key)) { $typeGroupA[$key] } else { @() }
-    $groupB = if ($typeGroupB.ContainsKey($key)) { $typeGroupB[$key] } else { @() }
-    $unmatchedB = @($groupB | Where-Object { -not $matchedB.Contains($_) })
-
-    if ($groupA.Count -eq 1 -and $unmatchedB.Count -eq 1) {
-        $candidate = $unmatchedB[0]
-        if ($ra.Name -ne $candidate.Name) {
-            $comparisonMatches.Add(@{ status = 'In Sync (name differs)'; resourceA = $ra.Resource; resourceB = $candidate.Resource; note = 'Unique type in both models with different names' })
+    foreach ($ra in $recordsA) {
+        $key = "$($ra.Type)|$($ra.Name)|$($ra.Context)"
+        if ($exactIndexB.ContainsKey($key) -and $exactIndexB[$key].Count -gt 0) {
+            $rb = $exactIndexB[$key].Dequeue()
+            $comparisonMatches.Add(@{ status = 'In Sync'; resourceA = $ra.Resource; resourceB = $rb.Resource; note = 'Exact type and name match' })
             [void]$matchedA.Add($ra)
-            [void]$matchedB.Add($candidate)
-            continue
+            [void]$matchedB.Add($rb)
         }
     }
 
-    foreach ($candidate in $unmatchedB) {
-        $nameA = $ra.Name
-        $nameB = $candidate.Name
-        $isSubstring = ($nameA -ne '' -and $nameB -ne '' -and ($nameA.Contains($nameB) -or $nameB.Contains($nameA)))
-        $distance = Get-LevenshteinDistance -Left $nameA -Right $nameB
+    # Group remaining candidates by type only, so Rule 2/3 look up a single bucket per A
+    # resource instead of re-filtering both full lists each time.
+    $typeGroupA = @{}
+    foreach ($ra in $recordsA) {
+        $key = "$($ra.Type)"
+        if (-not $typeGroupA.ContainsKey($key)) {
+            $typeGroupA[$key] = [System.Collections.Generic.List[object]]::new()
+        }
+        $typeGroupA[$key].Add($ra)
+    }
 
-        if ($isSubstring -or $distance -le 3) {
-            $comparisonMatches.Add(@{ status = 'In Sync (name differs)'; resourceA = $ra.Resource; resourceB = $candidate.Resource; note = "Fuzzy name match (substring or Levenshtein <= 3, distance=$distance)" })
-            [void]$matchedA.Add($ra)
-            [void]$matchedB.Add($candidate)
-            break
+    $typeGroupB = @{}
+    foreach ($rb in $recordsB) {
+        $key = "$($rb.Type)"
+        if (-not $typeGroupB.ContainsKey($key)) {
+            $typeGroupB[$key] = [System.Collections.Generic.List[object]]::new()
+        }
+        $typeGroupB[$key].Add($rb)
+    }
+
+    # Rule 2 and 3: Type match with unique count or fuzzy name.
+    foreach ($ra in $recordsA) {
+        if ($matchedA.Contains($ra)) { continue }
+
+        $key = "$($ra.Type)"
+        $groupA = if ($typeGroupA.ContainsKey($key)) { $typeGroupA[$key] } else { @() }
+        $groupB = if ($typeGroupB.ContainsKey($key)) { $typeGroupB[$key] } else { @() }
+        $unmatchedA = @($groupA | Where-Object { -not $matchedA.Contains($_) })
+        $unmatchedB = @($groupB | Where-Object { -not $matchedB.Contains($_) })
+
+        if ($unmatchedA.Count -eq 1 -and $unmatchedB.Count -eq 1) {
+            $candidate = $unmatchedB[0]
+            if ($ra.Name -ne $candidate.Name) {
+                $comparisonMatches.Add(@{ status = 'In Sync (name differs)'; resourceA = $ra.Resource; resourceB = $candidate.Resource; note = 'Unique type in both models with different names' })
+                [void]$matchedA.Add($ra)
+                [void]$matchedB.Add($candidate)
+                continue
+            }
+        }
+
+        foreach ($candidate in $unmatchedB) {
+            $nameA = $ra.Name
+            $nameB = $candidate.Name
+            $isSubstring = ($nameA -ne '' -and $nameB -ne '' -and ($nameA.Contains($nameB) -or $nameB.Contains($nameA)))
+            $distance = Get-LevenshteinDistance -Left $nameA -Right $nameB
+
+            if ($isSubstring -or $distance -le 3) {
+                $comparisonMatches.Add(@{ status = 'In Sync (name differs)'; resourceA = $ra.Resource; resourceB = $candidate.Resource; note = "Fuzzy name match (substring or Levenshtein <= 3, distance=$distance)" })
+                [void]$matchedA.Add($ra)
+                [void]$matchedB.Add($candidate)
+                break
+            }
         }
     }
-}
 
-# Final unmatched resources.
-foreach ($ra in $recordsA) {
-    if ($matchedA.Contains($ra)) { continue }
-    $comparisonMatches.Add(@{ status = "$LabelA Only"; resourceA = $ra.Resource; resourceB = $null; note = 'Present only in first model' })
-}
-
-foreach ($rb in $recordsB) {
-    if ($matchedB.Contains($rb)) { continue }
-    $comparisonMatches.Add(@{ status = "$LabelB Only"; resourceA = $null; resourceB = $rb.Resource; note = 'Present only in second model' })
-}
-
-$summary = @{
-    total          = $comparisonMatches.Count
-    inSync         = 0
-    inSyncNameDiff = 0
-    onlyA          = 0
-    onlyB          = 0
-}
-
-foreach ($entry in $comparisonMatches) {
-    switch ($entry.status) {
-        'In Sync' { $summary.inSync++ }
-        'In Sync (name differs)' { $summary.inSyncNameDiff++ }
-        "$LabelA Only" { $summary.onlyA++ }
-        "$LabelB Only" { $summary.onlyB++ }
+    # Final unmatched resources.
+    foreach ($ra in $recordsA) {
+        if ($matchedA.Contains($ra)) { continue }
+        $comparisonMatches.Add(@{ status = "$LabelA Only"; resourceA = $ra.Resource; resourceB = $null; note = 'Present only in first model' })
     }
-}
 
-$report = @{
-    labelA  = $LabelA
-    labelB  = $LabelB
-    summary = $summary
-    matches = @($comparisonMatches)
-}
+    foreach ($rb in $recordsB) {
+        if ($matchedB.Contains($rb)) { continue }
+        $comparisonMatches.Add(@{ status = "$LabelB Only"; resourceA = $null; resourceB = $rb.Resource; note = 'Present only in second model' })
+    }
 
-Write-ResourceModel -Model $report -OutFile $OutFile
+    $summary = @{
+        total          = $comparisonMatches.Count
+        inSync         = 0
+        inSyncNameDiff = 0
+        onlyA          = 0
+        onlyB          = 0
+    }
+
+    foreach ($entry in $comparisonMatches) {
+        switch ($entry.status) {
+            'In Sync' { $summary.inSync++ }
+            'In Sync (name differs)' { $summary.inSyncNameDiff++ }
+            "$LabelA Only" { $summary.onlyA++ }
+            "$LabelB Only" { $summary.onlyB++ }
+        }
+    }
+
+    $report = @{
+        labelA  = $LabelA
+        labelB  = $LabelB
+        summary = $summary
+        matches = @($comparisonMatches)
+    }
+
+    Write-ResourceModel -Model $report -OutFile $OutFile
+}
+catch {
+    Invoke-Exit -Code 1 -Message "Resource model comparison failed: $($_.Exception.Message)"
+}

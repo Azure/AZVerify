@@ -17,7 +17,8 @@ Generate Bicep templates and PowerShell deployment scripts from a Draw.io Azure 
 **Reference files**:
 - `.github/skills/shared/azure-resource-model.md` — Shared resource metadata model definition
 - `.github/skills/shared/azure-stencil-mapping.json` — Azure resource type to Draw.io stencil mapping (used for reverse-lookup: image path → resource type)
-- `.github/skills/shared/azure-resource-configs.md` — Per-resource-type configuration schemas with defaults
+- `.github/skills/shared/azure-resource-configs.md` — Per-resource-type configuration schemas and auto-detection rules
+- `.github/skills/shared/data/azure-property-paths.json` — Azure Property Retrieval Mapping (MCP tools, CLI fallbacks, ARM JSON paths, defaults)
 - `.github/skills/shared/azure-deployment-verification.md` — **Pre-deployment verification rules (MUST run before presenting results)**
 
 **Shared procedures** (MUST follow):

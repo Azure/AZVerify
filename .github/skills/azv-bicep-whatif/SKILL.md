@@ -22,6 +22,7 @@ Compare Bicep templates against a live Azure environment by querying Azure direc
 **Reference files**:
 - `.github/skills/shared/azure-resource-model.md` — Shared resource metadata model definition
 - `.github/skills/shared/azure-resource-configs.md` — Per-resource-type configuration schemas (useful for interpreting property changes)
+- `.github/skills/shared/data/azure-property-paths.json` — Azure Property Retrieval Mapping (tracked properties, ARM JSON paths, defaults, severity classifications)
 
 **Shared procedures** (MUST follow):
 - `.github/skills/shared/procedures/azure-authentication.md` — Azure session check procedure
@@ -84,7 +85,7 @@ Which parameter file should I use? (1/2)
 **If no `.bicepparam` file exists:**
 - Warn the user:
 ```
-⚠️ No `.bicepparam` file found in `<folder-path>`. Default parameter values from `azure-resource-configs.md` will be used as expected values.
+⚠️ No `.bicepparam` file found in `<folder-path>`. Default parameter values from `azure-property-paths.json` will be used as expected values.
 ```
 - Proceed without a parameter file
 
@@ -124,10 +125,10 @@ Read `main.bicep` and every Bicep module it references in `modules/`. For each r
 
 - **Resource type** (e.g., `Microsoft.Web/sites`)
 - **Resource name** — resolve from parameter values in the `.bicepparam` file if the name is a parameter reference (e.g., `name: appServiceName` → resolve `appServiceName` to its value)
-- **Key properties** — extract any properties that map to tracked properties in `.github/skills/shared/azure-resource-configs.md` for this resource type (e.g., `sku.name`, `properties.siteConfig.linuxFxVersion`, `properties.httpsOnly`)
+- **Key properties** — extract any properties that map to tracked properties in `.github/skills/shared/data/azure-property-paths.json` for this resource type (e.g., `sku.name`, `properties.siteConfig.linuxFxVersion`, `properties.httpsOnly`)
 - **Relationships** — note explicit references between resources (e.g., App Service → App Service Plan via `serverFarmId`)
 
-For properties that reference parameters (e.g., `linuxFxVersion: appServiceRuntimeStack`), resolve them using the `.bicepparam` values. If the parameter has no value in `.bicepparam`, use the default from `azure-resource-configs.md`.
+For properties that reference parameters (e.g., `linuxFxVersion: appServiceRuntimeStack`), resolve them using the `.bicepparam` values. If the parameter has no value in `.bicepparam`, use the default from `azure-property-paths.json`.
 
 **3c. Build the expected resource model**
 
@@ -229,7 +230,7 @@ Show progress: `Querying Azure resources (1/N): vnet-01...`
 
 **5c. Extract tracked properties from query results**
 
-For each resource, extract the property values that correspond to the tracked properties in `azure-resource-configs.md` for that resource type. Use the ARM JSON paths from the config schema to navigate the JSON response.
+For each resource, extract the property values that correspond to the tracked properties in `azure-property-paths.json` for that resource type. Use the ARM JSON paths from the mapping to navigate the JSON response.
 
 ### 6. Compare Models and Classify Changes
 
@@ -250,9 +251,9 @@ Match resources by type AND name (case-insensitive). Classify each resource as:
 
 **6b. Property-level comparison (for matched resources)**
 
-For resources matched in both models, compare each tracked property from `azure-resource-configs.md`:
+For resources matched in both models, compare each tracked property from `azure-property-paths.json`:
 
-1. **Expected value**: use the resolved value from the template (Step 3b); if not specified, use the default from `azure-resource-configs.md`
+1. **Expected value**: use the resolved value from the template (Step 3b); if not specified, use the default from `azure-property-paths.json`
 2. **Actual value**: the value retrieved from Azure (Step 5c)
 3. Apply **normalization rules** before comparing:
    - Case-insensitive string comparison for enum-like values (SKU names, tiers, regions)
@@ -263,7 +264,7 @@ For resources matched in both models, compare each tracked property from `azure-
    - Property name
    - Current value (Azure)
    - Expected value (template)
-   - Severity from `azure-resource-configs.md`
+   - Severity from `azure-property-paths.json`
 
 **6c. Classify final change type**
 
@@ -283,7 +284,7 @@ Display a categorized comparison report.
 
 **Per-category sections**:
 - **🆕 Create**: Table of resources in template but not in Azure (columns: #, Resource, Type, Resource Group)
-- **✏️ Modify**: Per-resource property diff tables (columns: Property, Current Azure Value, Template Value, Severity). Severity levels from `azure-resource-configs.md`.
+- **✏️ Modify**: Per-resource property diff tables (columns: Property, Current Azure Value, Template Value, Severity). Severity levels from `azure-property-paths.json`.
 - **🗑️ Delete**: Table of resources in Azure but not in template, with warning about authoritative deployment
 - **✅ No Change**: Collapsible `<details>` section listing matched resources
 

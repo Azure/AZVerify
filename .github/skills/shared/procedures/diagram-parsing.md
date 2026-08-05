@@ -34,12 +34,12 @@ pwsh .github/skills/shared/scripts/ConvertFrom-DrawioDiagram.ps1 -DiagramPath <d
 ## Notes
 
 - The script performs the reverse stencil lookup, container detection, containment mapping, and edge classification.
-- If `pwsh` or the script is unavailable, continue with the fallback procedure.
+- If `pwsh`/`powershell.exe` or the script is unavailable, continue with the fallback procedure.
 
 
 ## Fallback
 
-Use this fallback procedure when `pwsh` or the script is unavailable. If the script has already been invoked and failed, do not attempt the fallback.
+Use this fallback procedure when `pwsh`/`powershell.exe` or the script is unavailable. If the script has already been invoked and failed, do not attempt the fallback.
 
 1. **Load the stencil mapping** from `.github/skills/shared/azure-stencil-mapping.json` and build a **reverse lookup**: map each `imagePath` back to its Azure resource type (e.g., `img/lib/azure2/compute/Virtual_Machine.svg` → `Microsoft.Compute/virtualMachines`).
 

@@ -16,7 +16,8 @@ Check Bicep templates against the Azure Policy assignments active in the target 
 
 **Reference files**:
 - `.github/skills/shared/azure-resource-model.md` — Shared resource metadata model definition
-- `.github/skills/shared/azure-resource-configs.md` — Per-resource-type configuration schemas
+- `.github/skills/shared/azure-resource-configs.md` — Per-resource-type configuration schemas and auto-detection rules
+- `.github/skills/shared/data/azure-property-paths.json` — Azure Property Retrieval Mapping (MCP tools, CLI fallbacks, ARM JSON paths)
 
 **Shared procedures** (MUST follow):
 - `.github/skills/shared/procedures/azure-authentication.md` — Azure session check procedure
