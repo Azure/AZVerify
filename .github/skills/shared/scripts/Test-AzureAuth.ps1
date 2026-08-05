@@ -30,21 +30,12 @@ $ErrorActionPreference = 'Stop'
 
 . "$PSScriptRoot/_Common.ps1"
 
-function Get-AzModuleContext {
-    [CmdletBinding()]
-    param()
+$authContext = $null
 
-    try {
-        if (-not (Get-Command -Name Get-AzContext -ErrorAction SilentlyContinue)) {
-            return $null
-        }
-
-        $context = Get-AzContext -ErrorAction Stop
-        if (-not $context) {
-            return $null
-        }
-
-        return @{
+try {
+    $context = Get-AzContext -ErrorAction Stop
+    if ($context) {
+        $authContext = @{
             method           = 'AzPowerShell'
             subscriptionName = $context.Subscription.Name
             subscriptionId   = $context.Subscription.Id
@@ -52,64 +43,45 @@ function Get-AzModuleContext {
             account          = $context.Account.Id
         }
     }
-    catch {
-        return $null
-    }
+}
+catch {
+    Write-Verbose "Az PowerShell context unavailable: $_"
 }
 
-function Get-AzCliContext {
-    [CmdletBinding()]
-    param()
-
-    try {
-        if (-not (Get-Command -Name az -ErrorAction SilentlyContinue)) {
-            return $null
-        }
-
-        $azOutput = az account show --output json 2>$null
-        if ([string]::IsNullOrWhiteSpace($azOutput)) {
-            return $null
-        }
-
-        $parsed = $azOutput | ConvertFrom-Json -ErrorAction Stop
-        return @{
-            method           = 'AzureCLI'
-            subscriptionName = $parsed.name
-            subscriptionId   = $parsed.id
-            tenantId         = $parsed.tenantId
-            account          = $parsed.user.name
-        }
-    }
-    catch {
-        return $null
-    }
-}
-
-$authContext = Get-AzModuleContext
 if (-not $authContext) {
-    $authContext = Get-AzCliContext
+    try {
+        $azOutput = az account show --output json 2>$null
+        if (-not [string]::IsNullOrWhiteSpace($azOutput)) {
+            $parsed = $azOutput | ConvertFrom-Json -ErrorAction Stop
+            $authContext = @{
+                method           = 'AzureCLI'
+                subscriptionName = $parsed.name
+                subscriptionId   = $parsed.id
+                tenantId         = $parsed.tenantId
+                account          = $parsed.user.name
+            }
+        }
+    }
+    catch {
+        Write-Verbose "Azure CLI context unavailable: $_"
+    }
 }
 
 $result = @{
-    authenticated    = $false
-    subscriptionName = $null
-    subscriptionId   = $null
-    tenantId         = $null
-    account          = $null
-    method           = $null
+    authenticated    = [bool]$authContext
+    subscriptionName = if ($authContext) { $authContext.subscriptionName } else { $null }
+    subscriptionId   = if ($authContext) { $authContext.subscriptionId } else { $null }
+    tenantId         = if ($authContext) { $authContext.tenantId } else { $null }
+    account          = if ($authContext) { $authContext.account } else { $null }
+    method           = if ($authContext) { $authContext.method } else { $null }
 }
+
+Write-ResourceModel -Model $result -OutFile $OutFile
 
 if ($authContext) {
-    $result.authenticated    = $true
-    $result.subscriptionName = $authContext.subscriptionName
-    $result.subscriptionId   = $authContext.subscriptionId
-    $result.tenantId         = $authContext.tenantId
-    $result.account          = $authContext.account
-    $result.method           = $authContext.method
-    Write-ResourceModel -Model $result -OutFile $OutFile
     Invoke-Exit -Code 0 -Message 'Azure authentication verified.'
 }
-
-Write-Diag 'Azure authentication not found. Please log in with Connect-AzAccount or az login.'
-Write-ResourceModel -Model $result -OutFile $OutFile
-Invoke-Exit -Code 1 -Message 'Azure authentication check failed.'
+else {
+    Write-Diag 'Azure authentication not found. Please log in with Connect-AzAccount or az login.'
+    Invoke-Exit -Code 1 -Message 'Azure authentication check failed.'
+}

@@ -30,6 +30,8 @@ pwsh .github/skills/shared/scripts/Test-AzureAuth.ps1
 }
 ```
 
+> The `method` field is either `AzPowerShell` (Az PowerShell module) or `AzureCLI` (Azure CLI). The script probes Az PowerShell first and falls back to Azure CLI. Either is sufficient — skills do not need to care which method succeeded.
+
 - **stderr**: Diagnostics only
 
 ## Exit Codes

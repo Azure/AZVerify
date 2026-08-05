@@ -66,11 +66,12 @@ All scripts live in `scripts/` and are designed to emit JSON to stdout or an out
 
 ### Runtime prerequisites
 
-- **PowerShell 5.1 (powershell.exe) or higher (`pwsh`)** is required.
-- **Azure CLI (`az`)** is required for Azure-backed discovery and authentication checks.
-- **Bicep CLI support** is required for the primary Bicep build path. `ConvertFrom-BicepTemplate.ps1` can use `az bicep build` or standalone `bicep`.
 
-If a required prerequisite is unavailable, the calling skill will try the MCP first. If the MCP is unavailable, it must report the prerequisite and stop at the documented hard gate.
+- **PowerShell 7 (`pwsh`)** is preferred; **Windows PowerShell 5.1 (`powershell.exe`)** is also supported for the script-backed path.
+- **Azure CLI (`az`)** or **Az PowerShell module** for Azure-backed discovery and authentication checks (either is sufficient; `Test-AzureAuth.ps1` probes Az PowerShell first and falls back to Azure CLI)
+- **Bicep CLI support** is preferred for the primary Bicep build path. `ConvertFrom-BicepTemplate.ps1` can use `az bicep build` or standalone `bicep`.
+
+The scripts are an optimization, not a hard gate. When `pwsh` or a script is unavailable, the calling skill follows the inline fallback documented in the matching `procedures/` file (or the Azure MCP fallback for authentication and discovery).
 
 ### Script contracts
 
