@@ -39,7 +39,7 @@ pwsh .github/skills/shared/scripts/ConvertFrom-BicepTemplate.ps1 -BicepFile <mai
 
 ## Script Unavailable — Inline Fallback
 
-If `pwsh` or the script cannot run, parse the Bicep directly:
+If `pwsh`/`powershell.exe` is not available or the script cannot run, parse the Bicep directly:
 
 1. Read `main.bicep` and every referenced `modules/*.bicep` file.
 2. For each `resource <symbol> '<type>@<apiVersion>' = {` declaration, capture the symbolic name, `type`, `apiVersion`, the `name` value, and top-level properties.
