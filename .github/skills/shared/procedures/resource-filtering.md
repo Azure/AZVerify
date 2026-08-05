@@ -35,11 +35,11 @@ pwsh .github/skills/shared/scripts/Select-AzureResources.ps1 -InputFile <resourc
 ## Notes
 
 - The script applies type rules, `hidden-*` tag rules, and any extra exclusions.
-- If `pwsh` or the script is unavailable, use the inline fallback below.
+- If `pwsh`/`powershell.exe` or the script is unavailable, use the inline fallback below.
 
 ## Script Unavailable — Inline Fallback
 
-If `pwsh` or the script cannot run, filter the resource model directly:
+If `pwsh`/`powershell.exe` or the script cannot run, filter the resource model directly:
 
 1. Read `.github/skills/shared/data/resource-filter-rules.json`.
 2. For each resource in the input model, exclude it when its `type` matches a rule (exact or wildcard `*`) whose `excludeForDiagram` (mode `diagram`) or `excludeForBicep` (mode `bicep`) is `true`. For a rule value of `"check individually"`, keep the resource but note it for review.

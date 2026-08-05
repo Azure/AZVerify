@@ -19,8 +19,8 @@ pwsh .github/skills/shared/scripts/Compare-ResourceModels.ps1 -ModelA <model-a.j
 
 - `-ModelA` — required path to the first resource model JSON
 - `-ModelB` — required path to the second resource model JSON
-- `-LabelA` — required label for model A (for example `Diagram`)
-- `-LabelB` — required label for model B (for example `Azure` or `Bicep`)
+- `-LabelA` — optional label for model A (defaults to `ModelA`)
+- `-LabelB` — optional label for model B (defaults to `ModelB`)
 - `-OutFile` — optional output path; otherwise JSON is written to stdout
 
 ## Output
@@ -36,11 +36,11 @@ pwsh .github/skills/shared/scripts/Compare-ResourceModels.ps1 -ModelA <model-a.j
 ## Notes
 
 - The script applies exact match, single-of-type match, substring/Levenshtein matching, child-resource context, and conditional-resource annotations.
-- If `pwsh` or the script is unavailable, use the inline fallback below.
+- If `pwsh`/`powershell.exe` or the script is unavailable, use the inline fallback below.
 
 ## Script Unavailable — Inline Fallback
 
-If `pwsh` or the script cannot run, compare the two model JSONs directly using these ordered passes:
+If `pwsh`/`powershell.exe` or the script cannot run, compare the two model JSONs directly using these ordered passes:
 
 1. **Exact match** — same `type` and same `name` (case-insensitive) → **In Sync**.
 2. **Single-of-type match** — exactly one unmatched resource of a given `type` remains in each model → **In Sync (name differs)**, recording both names.

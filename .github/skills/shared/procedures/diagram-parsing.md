@@ -34,11 +34,11 @@ pwsh .github/skills/shared/scripts/ConvertFrom-DrawioDiagram.ps1 -DiagramPath <d
 ## Notes
 
 - The script performs the reverse stencil lookup, container detection, containment mapping, and edge classification.
-- If `pwsh` or the script is unavailable, use the inline fallback below.
+- If `pwsh`/`powershell.exe` or the script is unavailable, use the inline fallback below.
 
 ## Script Unavailable — Inline Fallback
 
-If `pwsh` or the script cannot run, parse the diagram directly:
+If `pwsh`/`powershell.exe` or the script cannot run, parse the diagram directly:
 
 1. Read the `.drawio` file as XML and load `.github/skills/shared/azure-stencil-mapping.json`.
 2. For each `<mxCell>` whose `style` contains an `image=...` value, reverse-look-up the image path in the stencil mapping to resolve the Azure resource `type`; use the cell `value` as the `name`.
