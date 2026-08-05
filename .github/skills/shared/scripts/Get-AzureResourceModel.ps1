@@ -538,8 +538,7 @@ try {
     }
 
     foreach ($resource in $modelResources) {
-        $parentId = Get-ParentResourceId -ResourceId ([string]$resource.id) -ResourceType ([string]$resource.type
-        )
+        $parentId = Get-ParentResourceId -ResourceId ([string]$resource.id) -ResourceType ([string]$resource.type)
         if (-not [string]::IsNullOrWhiteSpace($parentId) -and $resourceMap.ContainsKey($parentId)) {
             Add-Relationship -RelationshipMap $relationshipMaps[$resource.id] -SourceId $resource.id -TargetId $parentId -Type 'contains'
         }
