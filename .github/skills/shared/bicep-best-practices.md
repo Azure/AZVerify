@@ -20,6 +20,20 @@ Mandatory rules for all Bicep generation in AzVerify skills. Before generating a
 | 10 | Minimal comments | Only add comments beyond what `@description()` says. No `// ====` banners. Do use comments for complicated operations or ternaries |
 | 11 | Safe-dereference | Use `.?` and `??` for null handling, not ternaries or `!.` |
 
+## Template Structure
+
+Applies to every skill that generates a `main.bicep` + `modules/` + `.bicepparam` set.
+
+| Area | Rule |
+|------|------|
+| `main.bicep` | `targetScope = 'resourceGroup'`; declare every param with `@description()`; `@allowed()` where a fixed value set applies; `@secure()` for sensitive params; one module ref per category (do not set the `name:` property inside module blocks — the symbolic name before `=` is still required); outputs for key resource IDs and endpoints |
+| Module files | Only generate modules that have resources; pass each module only the params it needs; `parent:` for child resources; `existing` blocks for cross-file parent refs; symbolic refs (`foo.id`) |
+| Module categories | `networking`, `compute`, `data`, `identity`, `monitoring`. A resource that fits none of these goes in `modules/other.bicep`, and its resource type is listed in the generated README under "Manually Reviewed Resources" |
+| `.bicepparam` | `using 'main.bicep'`; include **all** param values; comment block per param (see below); `readEnvironmentVariable('PARAM_NAME')` for secrets, never hardcoded |
+| Param naming | camelCase and descriptive (e.g., `vmSize`, `appServicePlanSkuName`, `vnetAddressPrefix`) |
+| Secure defaults | `httpsOnly: true`, `minimumTlsVersion: '1.2'`, `publicNetworkAccess: 'Disabled'` where private endpoints exist |
+| Version currency | Verify runtime stacks, API versions, and OS images are current before use — never copy defaults from reference files unchecked |
+
 ## Bicepparam Comment Guidelines
 
 Keep comments to 1-3 lines per parameter. Cover:

@@ -22,7 +22,8 @@ Each Azure environment is represented as a **resource model** — a JSON structu
           "targetId": "<id-of-related-resource>",
           "type": "<relationship-type>"
         }
-      ]
+      ],
+      "secrets": ["<dotted-property-path>"]
     }
   ]
 }
@@ -40,6 +41,7 @@ Each Azure environment is represented as a **resource model** — a JSON structu
 | `properties` | object | No | Resource-specific properties (SKU, tier, size, etc.). |
 | `tags` | object | No | Azure resource tags as key-value pairs. |
 | `relationships` | array | No | Connections to other resources in the model. |
+| `secrets` | array | No | Dotted property paths holding secret values (e.g., `administratorLoginPassword`, `siteConfig.appSettings[APPINSIGHTS_INSTRUMENTATIONKEY]`). Emitted by `Get-AzureResourceModel.ps1 -StripReadOnly` only when secrets are detected; each path needs a `@secure()` parameter. |
 
 ## Script I/O Conventions
 
@@ -63,6 +65,56 @@ This contract keeps the script pipeline deterministic and chainable across the s
 | `peers` | Bidirectional peering | VNet peers with VNet |
 | `secures` | Security association | NSG secures Subnet |
 | `routes` | Traffic routing | Load Balancer routes to VM |
+
+## Manual Relationship Inference — Script Unavailable Fallback
+
+`Get-AzureResourceModel.ps1` populates each resource's `relationships` array automatically. If the script cannot run and the model was assembled by hand (MCP fallback), detect in-scope relationships using the patterns below.
+
+| Pattern | Detection Method | Relationship Type | Bicep Implication |
+|---------|-----------------|-------------------|-------------------|
+| **Subnet membership** | NIC's `ipConfigurations[].subnet.id` references a VNet/subnet in scope | `connects` | Subnet declared inside VNet module; NIC references subnet via symbolic ref |
+| **Private endpoint links** | PE's `privateLinkServiceConnections[].privateLinkServiceId` references a resource in scope | `depends` | PE in networking module with `dependsOn` on target resource |
+| **App Service Plan binding** | Web App's `serverFarmId` references an ASP in scope | `depends` | ASP and Web App in same module; Web App depends on ASP |
+| **NIC-to-VM binding** | VM's `networkProfile.networkInterfaces` references a NIC in scope | `connects` | NIC deployed before VM; VM references NIC via symbolic ref |
+| **Diagnostic settings** | Resource's diagnostic settings target a Log Analytics workspace in scope | `depends` | Diagnostic setting as child resource with `parent:` |
+| **Key Vault references** | App settings contain `@Microsoft.KeyVault(SecretUri=...)` referencing a vault in scope | `depends` | Output Key Vault URI; Web App depends on Key Vault |
+| **App Insights connection** | App settings contain `APPLICATIONINSIGHTS_CONNECTION_STRING` matching an AI resource in scope | `depends` | Web App depends on Application Insights; connection string as output |
+| **NSG-to-subnet binding** | Subnet's `networkSecurityGroup.id` references an NSG in scope | `secures` | NSG deployed before subnet; subnet references NSG |
+| **User-assigned identity** | Resource's `identity.userAssignedIdentities` references an identity in scope | `depends` | Identity deployed first; resource references identity |
+
+Treat any null or missing intermediate node in a detection path as "relationship not present" — do not flag it as an extraction error.
+
+## External Dependency Detection
+
+External dependencies are resources that in-scope resources depend on but that live in another resource group, subscription, or tenant. They cannot be deployed by generated Bicep for the current scope and need separate coordination.
+
+Detect them by resolving resource ID references in the extracted properties and checking whether the target falls outside the discovery scope.
+
+| Pattern | Detection Method | Dependency Type |
+|---------|-----------------|-----------------|
+| **VNet peering to external VNet** | VNet's `virtualNetworkPeerings[].remoteVirtualNetwork.id` points outside scope | `vnet-peering` — both sides must be configured |
+| **Private DNS zone in another RG** | Private endpoint's `privateDnsZoneGroups[].privateDnsZones[].id` points outside scope | `private-dns-zone` — A record must be created in the external zone |
+| **Log Analytics workspace in shared RG** | Diagnostic settings target a workspace outside scope | `log-analytics` — workspace must exist; may need access policy |
+| **Key Vault in another RG** | App settings reference a Key Vault outside scope | `key-vault-access` — access policy or RBAC role needed on external vault |
+| **Subnet in external VNet** | NIC or PE references a subnet in a VNet outside scope | `external-subnet` — subnet must exist with sufficient address space |
+| **Container registry in another RG** | Container App or AKS references an ACR outside scope | `container-registry` — AcrPull role needed for the identity |
+| **DNS zone in another subscription** | Custom domain configuration references external DNS | `dns-zone` — CNAME/A record must be created |
+| **RBAC on external resources** | Managed identity needs roles on resources outside scope | `rbac-assignment` — role assignment on external resource |
+| **Hub VNet route tables** | UDR references a firewall or NVA outside scope | `route-table` — routes in hub must point to correct next-hop |
+
+Treat any null or missing intermediate node in a detection path as "dependency not present" — do not flag it as an extraction error.
+
+Record each detected external dependency as:
+
+| Field | Description |
+|-------|-------------|
+| `type` | Dependency category from the table above |
+| `resourceId` | Full ARM resource ID of the external resource |
+| `resourceType` | Azure resource type |
+| `resourceName` | Display name |
+| `dependedOnBy` | List of in-scope resource names that depend on this |
+| `requiredAction` | Configuration change needed on the external resource |
+| `ownerHint` | Inferred from resource tags with priority `owner` > `team` > `costcenter`; `null` when none of these tags exist |
 
 ## Usage by Skill
 
