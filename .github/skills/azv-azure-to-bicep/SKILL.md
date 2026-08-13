@@ -21,13 +21,28 @@ Discover resources in a live Azure scope, extract their full configuration, and 
 3. **No per-resource progress messages.** During extraction, print a single summary after the batch (e.g., "Extracted 34 resources (3 partial)").
 4. **Batch CLI calls.** Use `az resource list` with `--query` for bulk discovery rather than per-resource MCP calls.
 5. **Build Bicep files directly.** Write generated code to files. Do NOT echo full Bicep/bicepparam content in the response — show only file paths and a summary of what was generated.
-6. **Delete intermediate files.** After generation is complete, delete all intermediate extraction files (`extract-*.json`, `resource-list-raw.json`, and the temporary resource model JSON file) from the output folder. Never leave the resource model JSON behind after the skill completes. Only final deliverables should remain: `main.bicep`, `.bicepparam`, `modules/`, `dependencies/`, `README.md`, and `original-request.md`.
+6. **Delete intermediate files.** Intermediate extraction files (`extract-*.json`, `resource-list-raw.json`, and the temporary resource model JSON file) are never deliverables. Keep them available until Step 11 has written the README (it needs the resource counts and extraction stats), then delete them all in Step 12. Never leave the resource model JSON behind after the skill completes.
+
+## Fallback: pwsh Unavailable
+
+If `pwsh`/`powershell.exe` or a shared script cannot be executed, use the fallback that matches the step you are on, then continue the workflow normally:
+
+| Step | Fallback source |
+|------|-----------------|
+| 1 — Auth check | MCP auth probe fallback in `.github/skills/shared/procedures/azure-authentication.md` |
+| 3 — Discovery | "Script/pwsh Unavailable — MCP Fallback" in `.github/skills/shared/azure-resource-configs.md` |
+| 4 — Filtering | Inline fallback in `.github/skills/shared/procedures/resource-filtering.md` |
+| 6a — Property extraction | "Script/pwsh Unavailable — MCP Fallback" in `.github/skills/shared/azure-resource-configs.md` |
+| 6b — Read-only stripping and secrets | Manual strip rules listed in Step 6b, using `.github/skills/shared/data/arm-readonly-properties.json` |
+| 7a — Relationships | "Manual Relationship Inference — Script Unavailable Fallback" in `.github/skills/shared/azure-resource-model.md` |
+
+Stop only if Azure MCP is also unavailable, using the prerequisite message in `.github/skills/shared/azure-resource-configs.md`.
 
 ## Steps
 
 ### 1. Check Azure Authentication
 
-Run `pwsh .github/skills/shared/scripts/Test-AzureAuth.ps1` — see `.github/skills/shared/procedures/azure-authentication.md` for the script contract. The script writes a JSON status object to stdout and exits non-zero when no Azure session is found. A **non-zero exit code is a HARD GATE**: present the authentication instructions from the contract doc and stop. *(If pwsh or the script is unavailable, follow the MCP auth probe fallback defined in the azure-authentication.md contract before stopping.)*
+Run `pwsh .github/skills/shared/scripts/Test-AzureAuth.ps1` — see `.github/skills/shared/procedures/azure-authentication.md` for the script contract. The script writes a JSON status object to stdout and exits non-zero when no Azure session is found. A **non-zero exit code is a HARD GATE**: present the authentication instructions from the contract doc and stop. *(If pwsh or the script is unavailable, see "Fallback: pwsh Unavailable".)*
 
 ### 2. Accept Inputs
 
@@ -90,11 +105,11 @@ Display progress:
 
 **3b. Subscription scope**
 
-Run the same script with `-SubscriptionId <sub-id>` instead of `-ResourceGroup`. Apply any user-specified resource type filters from Step 2b to the emitted model.
+Run the same script with `-SubscriptionId <sub-id>` instead of `-ResourceGroup`. Pass user-specified resource type filters from Step 2b as a `-ResourceTypeFilter` parameter to the script if supported; otherwise filter the emitted JSON before writing to the temporary model file. These user filters are distinct from the Step 4 standard exclusion rules applied by `-Mode bicep`, which never handles user filters.
 
 **3c. Script/pwsh unavailable — MCP fallback**
 
-If `pwsh`/`powershell.exe` or the script cannot be executed, build the same resource model through Azure MCP by following the "Script/pwsh Unavailable — MCP Fallback" section of `.github/skills/shared/azure-resource-configs.md` (list resources with `mcp_azure_group_resource_list`, then assemble the model shape by hand). Stop only if Azure MCP is also unavailable, using the prerequisite message in that document.
+If `pwsh`/`powershell.exe` or the script cannot be executed, build the same resource model through Azure MCP as described in "Fallback: pwsh Unavailable" (list resources with `mcp_azure_group_resource_list`, then assemble the model shape by hand).
 
 **3d. Handle empty results**
 
@@ -117,7 +132,9 @@ If you expected resources here, verify:
 
 ### 4. Filter Non-Deployable Resources
 
-Run `pwsh .github/skills/shared/scripts/Select-AzureResources.ps1 -InputFile <resource-model.json> -Mode bicep` — see `.github/skills/shared/procedures/resource-filtering.md` for the script contract. The script applies the shared exclusion rules, writes the filtered resource model JSON to stdout, and should be treated as the source of truth for the remaining steps. *(If pwsh or the script is unavailable, follow the inline fallback in the procedure doc above.)*
+Run `pwsh .github/skills/shared/scripts/Select-AzureResources.ps1 -InputFile <resource-model.json> -Mode bicep` — see `.github/skills/shared/procedures/resource-filtering.md` for the script contract. The script applies the shared exclusion rules, writes the filtered resource model JSON to stdout, and should be treated as the source of truth for the remaining steps. *(If pwsh or the script is unavailable, see "Fallback: pwsh Unavailable".)*
+
+If the script exits non-zero or produces unparseable output, report the error message to the user and stop. Do not proceed with an empty or partial resource list.
 
 Also apply any user-specified exclusion filters from Step 2b.
 
@@ -149,7 +166,7 @@ pwsh .github/skills/shared/scripts/Get-AzureResourceModel.ps1 -ResourceGroup <rg
 
 `-Enrich` fetches full resource detail (`az resource show` per resource) and extracts per-resource-type properties using the mappings in `.github/skills/shared/data/azure-property-paths.json` (`mcpTool` preferred, `fallback` CLI command per resource type, plus `armJsonPath`/composite rules for individual properties). `-Mode bicep` also applies the Step 4 filtering rules automatically.
 
-If `pwsh` or the script is unavailable, follow the "Script/pwsh Unavailable — MCP Fallback" section of `.github/skills/shared/azure-resource-configs.md` to enrich and extract properties by hand.
+If `pwsh` or the script is unavailable, see "Fallback: pwsh Unavailable" to enrich and extract properties by hand.
 
 After all resources are extracted, print a single batch summary (e.g., `✅ Extracted 34 resources (3 partial, 2 skipped)`). Do not print per-resource progress lines.
 
@@ -179,7 +196,7 @@ Analyze extracted properties to identify relationships between resources — bot
 
 **7a. Internal relationships (resources within the scope)**
 
-Use the `relationships` array already present on each resource in the model produced by `Get-AzureResourceModel.ps1` (`contains`, `connects`, `depends`, `secures` — see `.github/skills/shared/azure-resource-model.md`). These determine module structure and resource ordering in Bicep. *(If pwsh or the script was unavailable in Step 6, follow the "Manual Relationship Inference — Script Unavailable Fallback" section of that document to detect relationships and their Bicep implications by hand.)*
+Use the `relationships` array already present on each resource in the model produced by `Get-AzureResourceModel.ps1` (`contains`, `connects`, `depends`, `secures` — see `.github/skills/shared/azure-resource-model.md`). These determine module structure and resource ordering in Bicep. *(If pwsh or the script was unavailable in Step 6, see "Fallback: pwsh Unavailable" to detect relationships and their Bicep implications by hand.)*
 
 **7b. External dependencies (resources OUTSIDE the scope)**
 
@@ -202,7 +219,7 @@ Generate **all** Bicep files and the `.bicepparam` file in a single pass. Do not
 **Before writing any files:**
 - Sanitize the scope name for use as a folder name: replace spaces with hyphens, remove characters not in `[a-zA-Z0-9_\-.]`, and truncate to 64 characters. Use the sanitized name as the output folder name and record the original scope name in the README.
 - Write all output files to `./<sanitized-scope-name>/` relative to the workspace root.
-- If a directory with that name already exists, warn the user and ask whether to overwrite or choose an alternate folder name before writing any files.
+- If a directory with that name already exists, warn the user and ask whether to overwrite or choose an alternate folder name before writing any files. This overwrite check is the only user confirmation pause permitted during generation. All other steps proceed without confirmation.
 
 Use `.github/skills/shared/azure-resource-configs.md` for per-resource defaults and `.github/skills/shared/bicep-best-practices.md` for generation rules.
 
@@ -261,6 +278,8 @@ Each template: `targetScope = 'resourceGroup'`, top-of-file comment explaining t
 ### 10. Validate Generated Bicep
 
 Run the **full verification ruleset** from `.github/skills/shared/azure-deployment-verification.md`. This is mandatory — do not skip. Check all rule categories: SKU dependencies, resource compatibility, networking, security, regional availability, version currency, Bicep best practices, missing dependencies, and parameter completeness. Present results using the shared verification output format. Auto-fix errors where possible. Do not present code with known errors.
+
+If errors remain after auto-fix attempts, halt delivery of the affected files, present the specific errors to the user with remediation suggestions, and ask whether to proceed with the warnings-only files or stop entirely.
 
 ### 11. Write README and Present Output Summary
 
