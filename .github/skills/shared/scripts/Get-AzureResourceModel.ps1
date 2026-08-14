@@ -669,6 +669,7 @@ try {
             }
         }
 
+        $enrichedProperties = @{}
         if ($Enrich.IsPresent) {
             $enrichedProperties = Get-EnrichedProperties -Resource $resource -ResourceJson $details
             foreach ($key in $enrichedProperties.Keys) {
@@ -681,6 +682,25 @@ try {
             $tags = ConvertTo-Hashtable -InputObject $details.tags
         }
 
+        $deployableProperties = @{}
+        if ($Enrich.IsPresent) {
+            $deployableProperties = $enrichedProperties
+        }
+
+        $sku = @{}
+        if ($details.PSObject.Properties.Name -contains 'sku' -and $null -ne $details.sku) {
+            $sku = ConvertTo-Hashtable -InputObject $details.sku
+        }
+
+        $identity = @{}
+        if ($details.PSObject.Properties.Name -contains 'identity' -and $null -ne $details.identity) {
+            $identity = ConvertTo-Hashtable -InputObject $details.identity
+            if ($StripReadOnly.IsPresent) {
+                $identity = Remove-ReadOnlyProperty -InputObject @{ identity = $identity }
+                $identity = $identity['identity']
+            }
+        }
+
         $resourceId = [string]$details.id
         $modelResource = [ordered]@{
             id = $resourceId
@@ -689,12 +709,21 @@ try {
             resourceGroup = if ($details.PSObject.Properties.Name -contains 'resourceGroup') { [string]$details.resourceGroup } else { Get-ResourceGroupFromId -ResourceId $resourceId }
             location = if ($details.PSObject.Properties.Name -contains 'location') { [string]$details.location } else { $null }
             properties = $properties
+            deployableProperties = $deployableProperties
             tags = $tags
+            sku = $sku
+            kind = if ($details.PSObject.Properties.Name -contains 'kind') { [string]$details.kind } else { $null }
+            identity = $identity
             relationships = @()
         }
 
+        # Mask secrets in the raw discovery bag before it can be written to disk, but only
+        # require secure Bicep parameters for mapped values that generation can emit.
+        $rawSecrets = New-Object System.Collections.Generic.List[string]
+        Find-SecretProperty -InputObject $properties -Found $rawSecrets
+
         $secrets = New-Object System.Collections.Generic.List[string]
-        Find-SecretProperty -InputObject $properties -Found $secrets
+        Find-SecretProperty -InputObject $deployableProperties -Found $secrets
         if ($secrets.Count -gt 0) {
             $modelResource['secrets'] = $secrets.ToArray()
             Write-Diag "Flagged $($secrets.Count) secret-bearing property path(s) on '$($details.name)'."

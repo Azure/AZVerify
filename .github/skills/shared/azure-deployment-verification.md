@@ -2,7 +2,7 @@
 
 Shared pre-deployment verification rules for generated Bicep templates. These cover **gotcha-prone constraints** that are easy to miss — SKU dependencies, resource compatibility, and networking rules that cause deployment failures.
 
-For rules not listed here (security defaults like TLS 1.2, HTTPS enforcement, runtime version currency), verify against Bicep MCP `get_az_resource_type_schema`, `.github/skills/shared/bicep-best-practices.md`, and Microsoft documentation.
+For rules not listed here (security defaults like TLS 1.2, HTTPS enforcement, runtime version currency), verify against Bicep Schema MCP (`azure-bicepschema` / `bicepschema_get`), `.github/skills/shared/bicep-best-practices.md`, and Microsoft documentation.
 
 Any skill that generates or modifies Bicep for deployment MUST run these checks before presenting results. Failures block deployment; warnings are reported but don't block.
 

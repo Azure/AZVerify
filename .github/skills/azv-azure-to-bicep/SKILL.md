@@ -9,7 +9,17 @@ Discover resources in a live Azure scope, extract their full configuration, and 
 
 **Input**: An Azure scope — a resource group name (primary) or a subscription ID with optional resource type filter. Optionally, a target environment hint (dev/prod) to influence default sizing in the parameter file.
 
-**Tools used**: File system tools (read/write files), Terminal (for running `az` CLI commands and PowerShell 7 / `pwsh` shared scripts), Azure MCP server tools (`mcp_azure_group_resource_list`, `mcp_azure_compute`, `mcp_azure_storage`, `mcp_azure_subscription_list`, etc.), Bicep MCP server (for best-practice validation via `get_bicep_best_practices` and `get_az_resource_type_schema`)
+**Tools used**: File system tools (read/write files), Terminal (for running `az` CLI commands and PowerShell 7 / `pwsh` shared scripts), Azure Best Practices MCP (`azure-get_azure_bestpractices`), Bicep Schema MCP (`azure-bicepschema`), and Azure Documentation MCP (`azure-documentation`).
+
+### Tool Preflight
+
+Before discovery, verify the capabilities used by this workflow:
+
+1. Call `azure-get_azure_bestpractices` with `get_azure_bestpractices_get` for general code generation guidance.
+2. Call `azure-bicepschema` with `bicepschema_get` for every resource type whose API version or deployable schema is uncertain.
+3. Use `azure-documentation` search and fetch for current service guidance when a schema call does not answer the question.
+
+If a capability is unavailable, continue only when the matching shared reference plus Bicep CLI validation can provide the same check; report the fallback in the verification summary.
 
 
 ## Output Budget Rules
@@ -166,6 +176,8 @@ pwsh .github/skills/shared/scripts/Get-AzureResourceModel.ps1 -ResourceGroup <rg
 
 `-Enrich` fetches full resource detail (`az resource show` per resource) and extracts per-resource-type properties using the mappings in `.github/skills/shared/data/azure-property-paths.json` (`mcpTool` preferred, `fallback` CLI command per resource type, plus `armJsonPath`/composite rules for individual properties). `-Mode bicep` also applies the Step 4 filtering rules automatically.
 
+**Generation boundary:** Azure responses contain a mix of deployable configuration and computed state. Generate Bicep only from each model resource's `deployableProperties`, plus explicitly preserved deployable top-level values (`location`, `tags`, `sku`, `kind`, and managed identity configuration). Use the raw `properties` bag only for relationship discovery. Never serialize an unreviewed raw `properties` bag into generated Bicep.
+
 If `pwsh` or the script is unavailable, see "Fallback: pwsh Unavailable" to enrich and extract properties by hand.
 
 After all resources are extracted, print a single batch summary (e.g., `✅ Extracted 34 resources (3 partial, 2 skipped)`). Do not print per-resource progress lines.
@@ -221,7 +233,7 @@ Generate **all** Bicep files and the `.bicepparam` file in a single pass. Do not
 - Write all output files to `./<sanitized-scope-name>/` relative to the workspace root.
 - If a directory with that name already exists, warn the user and ask whether to overwrite or choose an alternate folder name before writing any files. This overwrite check is the only user confirmation pause permitted during generation. All other steps proceed without confirmation.
 
-Use `.github/skills/shared/azure-resource-configs.md` for per-resource defaults and `.github/skills/shared/bicep-best-practices.md` for generation rules.
+Use `.github/skills/shared/azure-resource-configs.md` for per-resource defaults and `.github/skills/shared/bicep-best-practices.md` for generation rules. Use the Tool Preflight capabilities to validate uncertain resource schemas and API versions.
 
 **Output structure:**
 ```

@@ -51,7 +51,11 @@
       "keyVault*",
       "*publicKey*",
       "*keyVaultUri*",
-      "*keyVaultReferenceIdentity*"
+      "*keyVaultReferenceIdentity*",
+      "keySource",
+      "keyType",
+      "keyCreationTime",
+      "key[0-9]*"
     ],
     "maskedValueRegex": "^\\*{2,}$"
   }

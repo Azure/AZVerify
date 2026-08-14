@@ -16,7 +16,11 @@ Each Azure environment is represented as a **resource model** — a JSON structu
       "resourceGroup": "<resource-group-name>",
       "location": "<azure-region>",
       "properties": {},
+      "deployableProperties": {},
       "tags": {},
+      "sku": {},
+      "kind": "",
+      "identity": {},
       "relationships": [
         {
           "targetId": "<id-of-related-resource>",
@@ -39,7 +43,11 @@ Each Azure environment is represented as a **resource model** — a JSON structu
 | `resourceGroup` | string | No | Resource group the resource belongs to. |
 | `location` | string | No | Azure region (e.g., `eastus`, `westeurope`). |
 | `properties` | object | No | Resource-specific properties (SKU, tier, size, etc.). |
+| `deployableProperties` | object | No | Mapped, deployable resource settings. Bicep generation must use this field instead of the raw `properties` bag. |
 | `tags` | object | No | Azure resource tags as key-value pairs. |
+| `sku` | object | No | Deployable top-level SKU configuration from Azure. |
+| `kind` | string | No | Deployable top-level resource kind from Azure. |
+| `identity` | object | No | Deployable managed identity configuration; computed IDs are removed when read-only stripping is enabled. |
 | `relationships` | array | No | Connections to other resources in the model. |
 | `secrets` | array | No | Dotted property paths holding secret values (e.g., `administratorLoginPassword`, `siteConfig.appSettings[APPINSIGHTS_INSTRUMENTATIONKEY]`). Detected values in `properties` are replaced with `***`; each path needs a `@secure()` parameter during generation. |
 

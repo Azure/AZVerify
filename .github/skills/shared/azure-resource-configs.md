@@ -2,7 +2,7 @@
 
 Per-resource-type property retrieval mappings and topology-driven auto-detection rules used by AzVerify skills for drift detection and Bicep generation.
 
-For per-resource defaults such as SKUs, sizes, and service settings, derive values from Bicep MCP `get_az_resource_type_schema`, or current Microsoft documentation. Do not hardcode defaults in this file.
+For per-resource defaults such as SKUs, sizes, and service settings, derive values from Bicep Schema MCP (`azure-bicepschema` / `bicepschema_get`), or current Microsoft documentation. Do not hardcode defaults in this file.
 
 ---
 

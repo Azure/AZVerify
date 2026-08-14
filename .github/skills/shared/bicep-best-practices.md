@@ -1,6 +1,6 @@
 # Bicep Best Practices
 
-Mandatory rules for all Bicep generation in AzVerify skills. Before generating any Bicep, also call the Bicep MCP server's `get_bicep_best_practices` tool for the latest guidance.
+Mandatory rules for all Bicep generation in AzVerify skills. Before generating any Bicep, call Azure Best Practices MCP (`azure-get_azure_bestpractices`, `get_azure_bestpractices_get`) for the latest guidance. Use Bicep Schema MCP (`azure-bicepschema`, `bicepschema_get`) when a resource schema or API version is uncertain.
 
 ---
 
@@ -50,7 +50,7 @@ param vmSize = 'Standard_B2s'
 
 ## API Version Rule
 
-Use the latest **stable** (non-preview) API version for each resource type. Call `get_az_resource_type_schema` to verify when uncertain.
+Use the latest **stable** (non-preview) API version for each resource type. Call Bicep Schema MCP (`azure-bicepschema`, `bicepschema_get`) to verify when uncertain.
 
 ## Bicepparam File Pattern
 
