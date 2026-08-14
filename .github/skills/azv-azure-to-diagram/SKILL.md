@@ -255,7 +255,7 @@ Use the Draw.io MCP tool (`mcp_drawio_create_diagram` or `mcp_draw_io_create_dia
 - Do NOT echo or print the Draw.io XML in the response — it is passed directly to the MCP tool
 - After the diagram is created, confirm with a single line: `Diagram created with N resource cells and M edges.`
 
-If the Draw.io MCP tool is unavailable or returns an error, write the assembled XML string to `<folder-name>.drawio` directly using the file system tool and note in the completion summary that the file was written without MCP validation. If both the Draw.io MCP tool and the file system tool are unavailable, report the failure to the user, output the raw XML in a fenced code block labeled with the intended filename, and stop.
+If the Draw.io MCP tool is unavailable or returns an error, write the assembled XML string to `<folder-name>.drawio` directly using the file system tool and note in the completion summary that the file was written without MCP validation. If both the Draw.io MCP tool and the file system tool are unavailable, report the failure to the user and stop without outputting the raw XML.
 
 ### 9. Create Solution Folder Output
 
