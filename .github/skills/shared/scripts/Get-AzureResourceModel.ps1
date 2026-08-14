@@ -1,25 +1,30 @@
 <#
 .SYNOPSIS
-Builds an Azure resource model from live Azure resources or captured az JSON.
+Builds an Azure resource model from live Azure resources or a captured JSON payload.
 .DESCRIPTION
-Uses `az resource list` as the primary discovery source, optionally enriches each
-resource with targeted `az resource show` calls, and emits the shared resource
-model JSON contract. Offline verification is supported through `-FromJson`, which
-accepts a captured `az resource list` payload. The script can optionally apply the
-shared filtering rules before returning the model.
+Uses `az resource list` (Azure CLI) or `Get-AzResource` (Az PowerShell) as the
+primary discovery source, optionally enriches each resource with targeted
+`az resource show`/`Get-AzResource -ResourceId` calls, and emits the shared
+resource model JSON contract. When Azure CLI (az) is not on PATH, the script
+automatically falls back to the Az PowerShell (Az.Resources) module, so live
+discovery works with either tool. Offline verification is supported through
+`-FromJson`, which accepts a captured `az resource list` (or equivalent) JSON
+payload. The script can optionally apply the shared filtering rules before
+returning the model.
 .PARAMETER ResourceGroup
 Optional Azure resource group name to scope discovery.
 .PARAMETER SubscriptionId
 Optional Azure subscription id to scope discovery.
 .PARAMETER Enrich
-When set, performs targeted `az resource show` calls and extracts configured
-properties from `shared/data/azure-property-paths.json`.
+When set, performs targeted per-resource enrichment calls (`az resource show`
+or `Get-AzResource -ResourceId`) and extracts configured properties from
+`shared/data/azure-property-paths.json`.
 .PARAMETER StripReadOnly
 When set, removes read-only and ARM-internal properties using the rules in
 `shared/data/arm-readonly-properties.json`. Use for Bicep generation; leave off
 for drift comparison, which may need the full property bag.
 .PARAMETER FromJson
-Optional path to a captured `az resource list` JSON payload for offline mode.
+Optional path to a captured `az resource list` (or equivalent) JSON payload for offline mode.
 .PARAMETER Mode
 Optional filter mode. When provided, the script invokes `Select-AzureResources.ps1`
 before returning the model.
@@ -28,7 +33,9 @@ Optional path to write the JSON resource model. If omitted, output is written to
 .OUTPUTS
 System.Management.Automation.PSCustomObject
 .NOTES
-Requires Azure CLI for live mode. Offline mode only requires a captured JSON file.
+Live mode requires either Azure CLI (az) on PATH or an authenticated Az PowerShell
+session (Connect-AzAccount) with the Az.Resources module installed; Azure CLI is
+preferred when both are available. Offline mode only requires a captured JSON file.
 .EXAMPLE
 pwsh Get-AzureResourceModel.ps1 -ResourceGroup rg-demo -Enrich
 .EXAMPLE
@@ -198,101 +205,6 @@ function Get-JsonPathValue {
     return $current
 }
 
-function Get-ResourceTypeConfig {
-    [CmdletBinding()]
-    param(
-        [Parameter(Mandatory = $true)]
-        [string]$ResourceType
-    )
-
-    if ($resourceTypeConfigIndex.ContainsKey($ResourceType)) {
-        $resourceTypeConfigIndex[$ResourceType]
-    }
-}
-
-function Get-CompositePropertyValue {
-    [CmdletBinding()]
-    param(
-        [Parameter(Mandatory = $true)]
-        $Rule,
-
-        [Parameter(Mandatory = $true)]
-        $ResourceJson
-    )
-
-    $parts = New-Object System.Collections.Generic.List[string]
-    foreach ($path in $Rule.assembledFrom) {
-        $value = Get-JsonPathValue -InputObject $ResourceJson -Path $path
-        if ($null -ne $value -and -not [string]::IsNullOrWhiteSpace([string]$value)) {
-            $parts.Add([string]$value)
-        }
-    }
-
-    if ($parts.Count -eq 0) {
-        return $null
-    }
-
-    if ($Rule.format -eq 'publisher:offer:sku:version') {
-        return ($parts -join ':')
-    }
-
-    ($parts -join ' ')
-}
-
-function Get-EnrichedProperties {
-    [CmdletBinding()]
-    param(
-        [Parameter(Mandatory = $true)]
-        $Resource,
-
-        [Parameter(Mandatory = $true)]
-        $ResourceJson
-    )
-
-    $properties = @{}
-    $typeConfig = Get-ResourceTypeConfig -ResourceType ([string]$Resource.type)
-    if ($null -eq $typeConfig) {
-        return $properties
-    }
-
-    foreach ($property in $typeConfig.properties) {
-        $path = [string]$property.armJsonPath
-        if ($path -like 'composite:*') {
-            $compositeName = $path.Substring('composite:'.Length)
-            $compositeKey = '{0}|{1}' -f $Resource.type, $compositeName
-            $rule = if ($compositeRuleIndex.ContainsKey($compositeKey)) { $compositeRuleIndex[$compositeKey] } else { $null }
-
-            if ($null -ne $rule) {
-                $compositeValue = Get-CompositePropertyValue -Rule $rule -ResourceJson $ResourceJson
-                if ($null -ne $compositeValue) {
-                    $properties[$property.name] = $compositeValue
-                }
-            }
-
-            continue
-        }
-
-        if ($path -match '\s+or\s+') {
-            foreach ($candidate in ($path -split '\s+or\s+')) {
-                $candidateValue = Get-JsonPathValue -InputObject $ResourceJson -Path $candidate.Trim()
-                if ($null -ne $candidateValue) {
-                    $properties[$property.name] = ConvertTo-Hashtable -InputObject $candidateValue
-                    break
-                }
-            }
-
-            continue
-        }
-
-        $value = Get-JsonPathValue -InputObject $ResourceJson -Path $path
-        if ($null -ne $value) {
-            $properties[$property.name] = ConvertTo-Hashtable -InputObject $value
-        }
-    }
-
-    return $properties
-}
-
 function Test-PropertyPathRule {
     [CmdletBinding()]
     param(
@@ -333,9 +245,13 @@ function Remove-ReadOnlyProperty {
                 continue
             }
 
-            if (Test-PropertyPathRule -Rules $readOnlyConfig.removePaths -Path $childPath) { continue }
-            if ($alwaysRemoveAnyDepth.Contains($name)) { continue }
-            if ($Path -eq '' -and $alwaysRemoveAtRoot.Contains($name)) { continue }
+            if (
+                (Test-PropertyPathRule -Rules $readOnlyConfig.removePaths -Path $childPath) -or
+                $alwaysRemoveAnyDepth.Contains($name) -or
+                ($Path -eq '' -and $alwaysRemoveAtRoot.Contains($name))
+            ) {
+                continue
+            }
 
             $result[$key] = Remove-ReadOnlyProperty -InputObject $InputObject[$key] -Path $childPath
         }
@@ -432,21 +348,6 @@ function Find-SecretProperty {
     }
 }
 
-function Get-RelationshipType {
-    [CmdletBinding()]
-    param(
-        [Parameter(Mandatory = $true)]
-        [string]$PropertyName
-    )
-
-    switch -Regex ($PropertyName) {
-        'subnet|virtualNetwork|networkInterface|backendAddressPool|frontendIPConfiguration|publicIPAddress' { return 'connects' }
-        'workspace|serverFarm|managedEnvironment|privateDnsZone|privateLinkService|vault|identity' { return 'depends' }
-        'applicationGateway|loadBalancer|routeTable|networkSecurityGroup' { return 'secures' }
-        default { return 'depends' }
-    }
-}
-
 function Add-Relationship {
     [CmdletBinding()]
     param(
@@ -527,51 +428,104 @@ function Find-ResourceIdsInObject {
     }
 }
 
-function Get-ResourceGroupFromId {
-    [CmdletBinding()]
-    param(
-        [Parameter(Mandatory = $true)]
-        [string]$ResourceId
-    )
+$script:azureDiscoveryMethod = $null
 
-    $resourceGroupMatch = [regex]::Match($ResourceId, '/resourceGroups/([^/]+)/')
-    if ($resourceGroupMatch.Success) {
-        return $resourceGroupMatch.Groups[1].Value
+function Resolve-AzureDiscoveryMethod {
+    <#
+    .SYNOPSIS
+    Determines whether live discovery should use Azure CLI (az) or Az PowerShell,
+    preferring Azure CLI when both are available. Result is cached for the
+    lifetime of the script run so the detection only happens once.
+    #>
+    [CmdletBinding()]
+    param()
+
+    if ($script:azureDiscoveryMethod) {
+        return $script:azureDiscoveryMethod
     }
 
-    return $null
+    $azCommand = Get-Command -Name 'az' -ErrorAction SilentlyContinue
+    if ($azCommand) {
+        Write-Diag "Using Azure CLI ('$($azCommand.Source)') for live discovery."
+        $script:azureDiscoveryMethod = 'AzureCLI'
+        return $script:azureDiscoveryMethod
+    }
+
+    $azPowerShellContext = $null
+    try {
+        $azPowerShellContext = Get-AzContext -ErrorAction Stop
+    }
+    catch {
+        $azPowerShellContext = $null
+    }
+
+    if ($azPowerShellContext -and $azPowerShellContext.Account) {
+        Write-Diag "Azure CLI (az) not found; using Az PowerShell context '$($azPowerShellContext.Account.Id)' for live discovery."
+        $script:azureDiscoveryMethod = 'AzPowerShell'
+        return $script:azureDiscoveryMethod
+    }
+
+    throw 'Live discovery requires either Azure CLI (az) on PATH or an authenticated Az PowerShell session (run Connect-AzAccount, with the Az.Resources module installed).'
 }
 
-function Get-ParentResourceId {
+function ConvertTo-GenericResourceModel {
+    <#
+    .SYNOPSIS
+    Normalizes an Az PowerShell resource object (from Get-AzResource) into the
+    same PSCustomObject shape produced by parsing az CLI JSON output, so
+    downstream code can consume either source interchangeably.
+    #>
     [CmdletBinding()]
     param(
         [Parameter(Mandatory = $true)]
-        [string]$ResourceId,
-
-        [Parameter(Mandatory = $true)]
-        [string]$ResourceType
+        $AzResource
     )
 
-    $typeSegments = $ResourceType -split '/'
-    if ($typeSegments.Count -le 2) {
-        return $null
+    $propertyNames = $AzResource.PSObject.Properties.Name
+
+    return [PSCustomObject]@{
+        id            = [string]$AzResource.ResourceId
+        name          = [string]$AzResource.Name
+        type          = [string]$AzResource.ResourceType
+        resourceGroup = [string]$AzResource.ResourceGroupName
+        location      = if ($propertyNames -contains 'Location') { [string]$AzResource.Location } else { $null }
+        tags          = if ($propertyNames -contains 'Tags' -and $AzResource.Tags) { $AzResource.Tags } else { $null }
+        sku           = if ($propertyNames -contains 'Sku' -and $AzResource.Sku) { $AzResource.Sku } else { $null }
+        kind          = if ($propertyNames -contains 'Kind' -and $AzResource.Kind) { [string]$AzResource.Kind } else { $null }
+        identity      = if ($propertyNames -contains 'Identity' -and $AzResource.Identity) { $AzResource.Identity } else { $null }
+        properties    = if ($propertyNames -contains 'Properties') { $AzResource.Properties } else { $null }
+    }
+}
+
+function Set-AzPowerShellSubscriptionContext {
+    <#
+    .SYNOPSIS
+    Switches the active Az PowerShell context to the requested subscription, if
+    it isn't already active, mirroring az CLI's per-call '--subscription' scoping.
+    #>
+    [CmdletBinding()]
+    param()
+
+    if ([string]::IsNullOrWhiteSpace($SubscriptionId)) {
+        return
     }
 
-    $idSegments = $ResourceId.Trim('/') -split '/'
-    $providerIndex = [Array]::IndexOf($idSegments, 'providers')
-    if ($providerIndex -lt 0) {
-        return $null
+    $currentContext = Get-AzContext -ErrorAction SilentlyContinue
+    if ($currentContext -and $currentContext.Subscription.Id -eq $SubscriptionId) {
+        return
     }
 
-    $providerPrefix = $idSegments[0..($providerIndex + 1)]
-    $nameSegments = $idSegments[($providerIndex + 2)..($idSegments.Length - 1)]
-    if ($nameSegments.Count -lt 2) {
-        return $null
+    Write-Diag "Switching Az PowerShell context to subscription '$SubscriptionId'."
+    $null = Set-AzContext -SubscriptionId $SubscriptionId -ErrorAction Stop
+}
+
+function Assert-AzResourcesModule {
+    [CmdletBinding()]
+    param()
+
+    if (-not (Get-Command -Name 'Get-AzResource' -ErrorAction SilentlyContinue)) {
+        throw "The 'Az.Resources' PowerShell module is required for Az PowerShell discovery. Install it with: Install-Module Az.Resources -Scope CurrentUser"
     }
-
-    $parentNameSegments = $nameSegments[0..($nameSegments.Count - 3)]
-
-    return '/' + (($providerPrefix + $parentNameSegments) -join '/')
 }
 
 function Invoke-AzJson {
@@ -605,53 +559,41 @@ function Invoke-AzJson {
     return $parsedJson
 }
 
-function Get-DiscoveredResources {
-    [CmdletBinding()]
-    param()
-
+try {
     if ($isOfflineMode) {
         $resolvedPath = Resolve-Path -LiteralPath $FromJson -ErrorAction Stop
         Write-Diag "Loading offline resource list from '$resolvedPath'."
-        # See comment in Invoke-AzJson: assign before returning to avoid PS 5.1's
+        # See comment in Invoke-AzJson: assign before using the result to avoid PS 5.1's
         # ConvertFrom-Json array-enumeration quirk.
-        $parsedJson = Get-Content -LiteralPath $resolvedPath -Raw | ConvertFrom-Json
-        return $parsedJson
+        $discovered = Get-Content -LiteralPath $resolvedPath -Raw | ConvertFrom-Json
+    }
+    elseif ((Resolve-AzureDiscoveryMethod) -eq 'AzPowerShell') {
+        Assert-AzResourcesModule
+        Set-AzPowerShellSubscriptionContext
+
+        $getParams = @{ ErrorAction = 'Stop'; ExpandProperties = $true }
+        if (-not [string]::IsNullOrWhiteSpace($ResourceGroup)) {
+            $getParams['ResourceGroupName'] = $ResourceGroup
+        }
+
+        Write-Diag 'Running Get-AzResource (Az PowerShell) for resource discovery.'
+        $azResources = @(Get-AzResource @getParams)
+        $discovered = @($azResources | ForEach-Object { ConvertTo-GenericResourceModel -AzResource $_ })
+    }
+    else {
+        $arguments = @('resource', 'list', '--output', 'json')
+        if (-not [string]::IsNullOrWhiteSpace($ResourceGroup)) {
+            $arguments += @('--resource-group', $ResourceGroup)
+        }
+        if (-not [string]::IsNullOrWhiteSpace($SubscriptionId)) {
+            $arguments += @('--subscription', $SubscriptionId)
+        }
+
+        Write-Diag 'Running az resource list.'
+        $discovered = Invoke-AzJson -Arguments $arguments
     }
 
-    $arguments = @('resource', 'list', '--output', 'json')
-    if (-not [string]::IsNullOrWhiteSpace($ResourceGroup)) {
-        $arguments += @('--resource-group', $ResourceGroup)
-    }
-    if (-not [string]::IsNullOrWhiteSpace($SubscriptionId)) {
-        $arguments += @('--subscription', $SubscriptionId)
-    }
-
-    Write-Diag 'Running az resource list.'
-    return Invoke-AzJson -Arguments $arguments
-}
-
-function Get-ResourceDetails {
-    [CmdletBinding()]
-    param(
-        [Parameter(Mandatory = $true)]
-        $Resource
-    )
-
-    if (-not $Enrich.IsPresent -or $isOfflineMode) {
-        return $Resource
-    }
-
-    $arguments = @('resource', 'show', '--ids', [string]$Resource.id, '--output', 'json')
-    if (-not [string]::IsNullOrWhiteSpace($SubscriptionId)) {
-        $arguments += @('--subscription', $SubscriptionId)
-    }
-
-    Write-Diag "Enriching '$($Resource.name)' ($($Resource.type))."
-    return Invoke-AzJson -Arguments $arguments
-}
-
-try {
-    $discovered = @(Get-DiscoveredResources)
+    $discovered = @($discovered)
     Write-Diag "Discovered $($discovered.Count) resource(s)."
 
     $resourceMap = @{}
@@ -659,9 +601,31 @@ try {
     $modelResources = New-Object System.Collections.Generic.List[object]
 
     foreach ($resource in $discovered) {
-        $details = Get-ResourceDetails -Resource $resource
+        $isEnriching = $Enrich.IsPresent
+        if (-not $isEnriching -or $isOfflineMode) {
+            $details = $resource
+        }
+        elseif ((Resolve-AzureDiscoveryMethod) -eq 'AzPowerShell') {
+            Assert-AzResourcesModule
+            Set-AzPowerShellSubscriptionContext
+
+            Write-Diag "Enriching '$($resource.id)' via Get-AzResource (Az PowerShell)."
+            $azResource = Get-AzResource -ResourceId ([string]$resource.id) -ExpandProperties -ErrorAction Stop
+            $details = ConvertTo-GenericResourceModel -AzResource $azResource
+        }
+        else {
+            $arguments = @('resource', 'show', '--ids', [string]$resource.id, '--output', 'json')
+            if (-not [string]::IsNullOrWhiteSpace($SubscriptionId)) {
+                $arguments += @('--subscription', $SubscriptionId)
+            }
+
+            Write-Diag "Enriching '$($resource.name)' ($($resource.type))."
+            $details = Invoke-AzJson -Arguments $arguments
+        }
+
+        $detailPropertyNames = $details.PSObject.Properties.Name
         $properties = @{}
-        if ($details.PSObject.Properties.Name -contains 'properties' -and $null -ne $details.properties) {
+        if ($detailPropertyNames -contains 'properties' -and $null -ne $details.properties) {
             $properties = ConvertTo-Hashtable -InputObject $details.properties
 
             if ($StripReadOnly.IsPresent) {
@@ -670,30 +634,80 @@ try {
         }
 
         $enrichedProperties = @{}
-        if ($Enrich.IsPresent) {
-            $enrichedProperties = Get-EnrichedProperties -Resource $resource -ResourceJson $details
+        if ($isEnriching) {
+            $typeConfig = $resourceTypeConfigIndex[[string]$resource.type]
+            if ($null -ne $typeConfig) {
+                foreach ($property in $typeConfig.properties) {
+                    $path = [string]$property.armJsonPath
+                    if ($path -like 'composite:*') {
+                        $compositeName = $path.Substring('composite:'.Length)
+                        $compositeKey = '{0}|{1}' -f $resource.type, $compositeName
+                        $rule = $compositeRuleIndex[$compositeKey]
+
+                        if ($null -ne $rule) {
+                            $parts = New-Object System.Collections.Generic.List[string]
+                            foreach ($partPath in $rule.assembledFrom) {
+                                $value = Get-JsonPathValue -InputObject $details -Path $partPath
+                                if ($null -ne $value -and -not [string]::IsNullOrWhiteSpace([string]$value)) {
+                                    $parts.Add([string]$value)
+                                }
+                            }
+
+                            if ($parts.Count -gt 0) {
+                                $enrichedProperties[$property.name] = if ($rule.format -eq 'publisher:offer:sku:version') {
+                                    $parts -join ':'
+                                }
+                                else {
+                                    $parts -join ' '
+                                }
+                            }
+                        }
+
+                        continue
+                    }
+
+                    if ($path -match '\s+or\s+') {
+                        foreach ($candidate in ($path -split '\s+or\s+')) {
+                            $candidateValue = Get-JsonPathValue -InputObject $details -Path $candidate.Trim()
+                            if ($null -ne $candidateValue) {
+                                $enrichedProperties[$property.name] = ConvertTo-Hashtable -InputObject $candidateValue
+                                break
+                            }
+                        }
+
+                        continue
+                    }
+
+                    $value = Get-JsonPathValue -InputObject $details -Path $path
+                    if ($null -ne $value) {
+                        $enrichedProperties[$property.name] = ConvertTo-Hashtable -InputObject $value
+                    }
+                }
+            }
+
             foreach ($key in $enrichedProperties.Keys) {
                 $properties[$key] = $enrichedProperties[$key]
             }
         }
 
-        $tags = @{}
-        if ($details.PSObject.Properties.Name -contains 'tags' -and $null -ne $details.tags) {
-            $tags = ConvertTo-Hashtable -InputObject $details.tags
+        $tags = if ($detailPropertyNames -contains 'tags' -and $null -ne $details.tags) {
+            ConvertTo-Hashtable -InputObject $details.tags
+        }
+        else {
+            @{}
         }
 
-        $deployableProperties = @{}
-        if ($Enrich.IsPresent) {
-            $deployableProperties = $enrichedProperties
-        }
+        $deployableProperties = if ($isEnriching) { $enrichedProperties } else { @{} }
 
-        $sku = @{}
-        if ($details.PSObject.Properties.Name -contains 'sku' -and $null -ne $details.sku) {
-            $sku = ConvertTo-Hashtable -InputObject $details.sku
+        $sku = if ($detailPropertyNames -contains 'sku' -and $null -ne $details.sku) {
+            ConvertTo-Hashtable -InputObject $details.sku
+        }
+        else {
+            @{}
         }
 
         $identity = @{}
-        if ($details.PSObject.Properties.Name -contains 'identity' -and $null -ne $details.identity) {
+        if ($detailPropertyNames -contains 'identity' -and $null -ne $details.identity) {
             $identity = ConvertTo-Hashtable -InputObject $details.identity
             if ($StripReadOnly.IsPresent) {
                 $identity = Remove-ReadOnlyProperty -InputObject @{ identity = $identity }
@@ -702,17 +716,30 @@ try {
         }
 
         $resourceId = [string]$details.id
+        $resourceGroup = if ($detailPropertyNames -contains 'resourceGroup') {
+            [string]$details.resourceGroup
+        }
+        else {
+            $resourceGroupMatch = [regex]::Match($resourceId, '/resourceGroups/([^/]+)/')
+            if ($resourceGroupMatch.Success) {
+                $resourceGroupMatch.Groups[1].Value
+            }
+            else {
+                $null
+            }
+        }
+
         $modelResource = [ordered]@{
             id = $resourceId
             type = [string]$details.type
             name = [string]$details.name
-            resourceGroup = if ($details.PSObject.Properties.Name -contains 'resourceGroup') { [string]$details.resourceGroup } else { Get-ResourceGroupFromId -ResourceId $resourceId }
-            location = if ($details.PSObject.Properties.Name -contains 'location') { [string]$details.location } else { $null }
+            resourceGroup = $resourceGroup
+            location = if ($detailPropertyNames -contains 'location') { [string]$details.location } else { $null }
             properties = $properties
             deployableProperties = $deployableProperties
             tags = $tags
             sku = $sku
-            kind = if ($details.PSObject.Properties.Name -contains 'kind') { [string]$details.kind } else { $null }
+            kind = if ($detailPropertyNames -contains 'kind') { [string]$details.kind } else { $null }
             identity = $identity
             relationships = @()
         }
@@ -735,7 +762,21 @@ try {
     }
 
     foreach ($resource in $modelResources) {
-        $parentId = Get-ParentResourceId -ResourceId ([string]$resource.id) -ResourceType ([string]$resource.type)
+        $parentId = $null
+        $typeSegments = ([string]$resource.type) -split '/'
+        if ($typeSegments.Count -gt 2) {
+            $idSegments = ([string]$resource.id).Trim('/') -split '/'
+            $providerIndex = [Array]::IndexOf($idSegments, 'providers')
+            if ($providerIndex -ge 0) {
+                $providerPrefix = $idSegments[0..($providerIndex + 1)]
+                $nameSegments = $idSegments[($providerIndex + 2)..($idSegments.Length - 1)]
+                if ($nameSegments.Count -ge 2) {
+                    $parentNameSegments = $nameSegments[0..($nameSegments.Count - 3)]
+                    $parentId = '/' + (($providerPrefix + $parentNameSegments) -join '/')
+                }
+            }
+        }
+
         if (-not [string]::IsNullOrWhiteSpace($parentId) -and $resourceMap.ContainsKey($parentId)) {
             Add-Relationship -RelationshipMap $relationshipMaps[$resource.id] -SourceId $resource.id -TargetId $parentId -Type 'contains'
         }
@@ -744,7 +785,12 @@ try {
         Find-ResourceIdsInObject -InputObject $resource.properties -ResourceIdMatches $resourceIdMatches
         foreach ($match in $resourceIdMatches) {
             if ($resourceMap.ContainsKey([string]$match.ResourceId)) {
-                $relationshipType = Get-RelationshipType -PropertyName ([string]$match.PropertyName)
+                $relationshipType = switch -Regex ([string]$match.PropertyName) {
+                    'subnet|virtualNetwork|networkInterface|backendAddressPool|frontendIPConfiguration|publicIPAddress' { 'connects'; break }
+                    'workspace|serverFarm|managedEnvironment|privateDnsZone|privateLinkService|vault|identity' { 'depends'; break }
+                    'applicationGateway|loadBalancer|routeTable|networkSecurityGroup' { 'secures'; break }
+                    default { 'depends' }
+                }
                 Add-Relationship -RelationshipMap $relationshipMaps[$resource.id] -SourceId $resource.id -TargetId ([string]$match.ResourceId) -Type $relationshipType
             }
         }

@@ -39,7 +39,7 @@ If `pwsh`/`powershell.exe` or a shared script cannot be executed, use the fallba
 | Step | Fallback source |
 |------|-----------------|
 | 1 — Auth check | MCP auth probe fallback in `.github/skills/shared/procedures/azure-authentication.md` |
-| 3 — Discovery | "Script/pwsh Unavailable — MCP Fallback" in `.github/skills/shared/azure-resource-configs.md` (see Step 3c) |
+| 3 — Discovery | "Script/pwsh Unavailable — MCP Fallback" in `.github/skills/shared/azure-resource-configs.md` (see Step 3d) |
 | 4 — Filtering | Inline fallback in `.github/skills/shared/procedures/resource-filtering.md` |
 | 6a — Property extraction | "Script/pwsh Unavailable — MCP Fallback" in `.github/skills/shared/azure-resource-configs.md` |
 | 6b — Read-only stripping and secrets | Manual strip rules listed in Step 6b, using `.github/skills/shared/data/arm-readonly-properties.json` |
@@ -61,7 +61,7 @@ Identify the Azure scope to discover resources from.
 
 **If the user specifies a resource group name:**
 - Use that resource group as the discovery scope
-- Verify the resource group exists: run `az group show --name <name>` — if this fails, report an error and stop
+- Verify the resource group exists: run `az group show --name <name>` (or, if `az` is unavailable, `Get-AzResourceGroup -Name <name>` via Az PowerShell, or `mcp_azure_group_list`/`mcp_azure_group_resource_list` via Azure MCP) — if all available methods fail, report an error and stop
 
 **If the user specifies a subscription ID:**
 - Use that subscription as the discovery scope
@@ -102,7 +102,7 @@ pwsh .github/skills/shared/scripts/Get-AzureResourceModel.ps1 -ResourceGroup <rg
 
 The script emits the shared resource model contract (`id`, `name`, `type`, `location`, `tags`, `sku`) documented in `.github/skills/shared/azure-resource-model.md`. Treat the emitted JSON as the source of truth for Steps 4-7. Do not print the model contents.
 
-If the script exits non-zero or produces unparseable output, report the error message to the user and stop. If the result count is zero and the resource group was confirmed to exist in Step 2a, warn the user that the authenticated identity may lack Reader permissions.
+If the script exits non-zero or produces unparseable output, use "Script/pwsh unavailable — MCP fallback" (Step 3d) instead of stopping. Only stop if Azure MCP is also unavailable, per "Fallback: pwsh Unavailable" above. If the result count is zero and the resource group was confirmed to exist in Step 2a, warn the user that the authenticated identity may lack Reader permissions.
 
 Display a single progress line:
 ```
@@ -111,20 +111,31 @@ Found **N resources** in `<rg-name>` — now filtering and enriching.
 
 **3b. Subscription scope**
 
-Run the same script with `-SubscriptionId <sub-id>` instead of `-ResourceGroup`. If the user specified a resource type **inclusion** filter in Step 2b (e.g., "only show networking resources"), pass it as a `-ResourceTypeFilter` parameter to the script if supported; otherwise filter the emitted JSON before writing to the temporary model file. Do **not** apply user-specified **exclusions** here — those are applied exactly once, in Step 4, alongside the standard exclusion rules, to avoid filtering the same resource list twice.
+Run the same script with `-SubscriptionId <sub-id>` instead of `-ResourceGroup`. Do **not** apply user-specified **exclusions** here — those are applied exactly once, in Step 4, alongside the standard exclusion rules, to avoid filtering the same resource list twice. Resource type **inclusion** filters (Step 2b) are applied uniformly for both scopes in Step 3c below.
 
-If the script exits non-zero or produces unparseable output, report the error message to the user and stop. If the result count is zero, warn the user that the authenticated identity may lack Reader permissions on this subscription.
+If the script exits non-zero or produces unparseable output, use "Script/pwsh unavailable — MCP fallback" (Step 3d) instead of stopping. Only stop if Azure MCP is also unavailable, per "Fallback: pwsh Unavailable" above. If the result count is zero, warn the user that the authenticated identity may lack Reader permissions on this subscription.
 
 Display a single progress line:
 ```
 Found **N resources** in subscription `<sub-id>` — now filtering and enriching.
 ```
 
-**3c. Script/pwsh unavailable — MCP fallback**
+**3c. Apply Resource Type Inclusion Filters**
 
-If `pwsh`/`powershell.exe` or the script cannot be executed, build the same resource model through Azure MCP as described in "Fallback: pwsh Unavailable" (list resources with `mcp_azure_group_resource_list`, then assemble the model shape by hand).
+`Get-AzureResourceModel.ps1` has no `-ResourceTypeFilter` parameter — it never narrows results by type on its own, regardless of scope. If the user specified a resource type **inclusion** filter in Step 2b (e.g., "only show networking resources" → `Microsoft.Network/*`), apply it now, before the resource model is treated as the source of truth for the remaining steps:
 
-**3d. Handle empty results**
+1. Read the resource model JSON written in Step 3a/3b (`<output-folder>/resource-model.json`).
+2. Keep only resources whose `type` matches one of the mapped inclusion prefixes from Step 2b (case-insensitive, wildcard `*` match). Discard the rest.
+3. Overwrite `<output-folder>/resource-model.json` with the filtered result, preserving the same JSON shape (`id`, `name`, `type`, `location`, `tags`, `sku`, `relationships`).
+4. If no resources match the inclusion filter, treat this the same as "no resources found" (see Step 3e) rather than continuing with an empty model.
+
+If the user did not specify an inclusion filter in Step 2b, skip this step — the model from Step 3a/3b passes through unchanged.
+
+**3d. Script/pwsh unavailable — MCP fallback**
+
+If `pwsh`/`powershell.exe` or the script cannot be executed, build the same resource model through Azure MCP as described in "Fallback: pwsh Unavailable" (list resources with `mcp_azure_group_resource_list`, then assemble the model shape by hand, applying the same inclusion-filter logic from Step 3c before treating the result as final).
+
+**3e. Handle empty results**
 
 If no resources are found (or none remain after filtering):
 ```
@@ -134,12 +145,12 @@ No resources were found in `<scope-name>`.
 
 If you expected resources here, verify:
 - The resource group name is spelled correctly
-- You're connected to the correct subscription (`az account show`)
+- You're connected to the correct subscription (`az account show` or `Get-AzContext`)
 - Resources have been deployed to this scope
 ```
 - Stop execution
 
-**3e. Create Solution Folder**
+**3f. Create Solution Folder**
 
 Create the solution folder now, before any intermediate files are written.
 
@@ -154,7 +165,7 @@ Run `pwsh .github/skills/shared/scripts/Select-AzureResources.ps1 -InputFile <re
 
 If the script exits non-zero or produces unparseable output, report the error message to the user and stop. Do not proceed with an empty or partial resource list.
 
-Also apply any user-specified **exclusion** filters from Step 2b now — this is the only place exclusions are applied (inclusion filters, if any, were already applied in Step 3a/3b).
+Also apply any user-specified **exclusion** filters from Step 2b now — this is the only place exclusions are applied (inclusion filters, if any, were already applied in Step 3c).
 
 
 **If all resources are filtered out**, report "No Diagram-Worthy Resources" and stop execution.
@@ -163,7 +174,7 @@ Display the filtered resource list:
 - If the filtered count is **10 or fewer**: display the full table inline with columns: #, Resource, Type, Location, SKU.
 - If the filtered count **exceeds 10**: print only the count and a resource-type breakdown summary in the chat response. Write the full resource table to the temporary resource model file in the solution folder instead of echoing it.
 
-Write the temporary resource model JSON to the solution folder created in Step 3e. It is an intermediate artifact only and must be deleted before the skill finishes.
+Write the temporary resource model JSON to the solution folder created in Step 3f. It is an intermediate artifact only and must be deleted before the skill finishes.
 
 ### 5. Check for Large Scope
 
@@ -185,7 +196,7 @@ Use resource-type-specific Azure MCP tools to retrieve detailed properties for r
 
 **Prefer batch CLI enrichment over per-resource MCP calls** to reduce output volume:
 
-1. **Batch approach (preferred):** Run a single `az resource list --resource-group <rg> -o json` with `--query` to get all resources with their full properties in one call. Parse the JSON output to extract relationship-relevant properties. As each resource is enriched this way, record its enrichment source (`batch`) in a local tracking variable (e.g., a map of resource ID → `batch`/`targeted`/`failed`).
+1. **Batch approach (preferred):** Run a single `az resource list --resource-group <rg> -o json` with `--query` to get all resources with their full properties in one call (or, if `az` is unavailable, `Get-AzResource -ResourceGroupName <rg> -ExpandProperties` via Az PowerShell). Parse the output to extract relationship-relevant properties. As each resource is enriched this way, record its enrichment source (`batch`) in a local tracking variable (e.g., a map of resource ID → `batch`/`targeted`/`failed`).
 2. **Determine remaining gaps:** After the batch query, before making any MCP calls, produce a list of resource types still needing targeted calls — i.e., types whose relationship-relevant properties are not present in the batch output (per `.github/skills/shared/data/azure-property-paths.json`).
 3. **Targeted MCP calls:** Only use per-resource MCP calls for the resource types identified in step 2 that need specific APIs not available in the batch output (e.g., `az webapp config appsettings list` for App Service app settings). Update the tracking variable to `targeted` for each resource enriched this way, or `failed` if the call errors or is unavailable.
 4. Store enriched properties alongside the base resource information in the temporary resource model file.
@@ -208,7 +219,7 @@ If a resource-type-specific MCP tool fails or is unavailable:
 
 ### 7. Infer Relationships
 
-The discovery script (Step 3a/3b) already populates a baseline `relationships` array on each resource — parent/child `contains` links plus any relationship it detects by matching ARM resource IDs inside `properties` (see `.github/skills/shared/azure-resource-model.md`). Start from that baseline instead of re-detecting containment and direct ID references from scratch, then use the patterns below to add diagram-specific edge styles and detect relationships the generic ID matching cannot see (connection strings, Key Vault reference syntax, RBAC scope strings, co-location).
+The discovery script (Step 3a/3b) already populates a baseline `relationships` array on each resource — parent/child `contains` links plus any relationship it detects by matching ARM resource IDs inside `properties` (see `.github/skills/shared/azure-resource-model.md`). That baseline was computed before enrichment, so it only saw the often-sparse `az resource list` property bags — it can miss direct ARM ID references (NIC subnet IDs, private-endpoint targets, App Service Plan IDs, etc.) that only appear once Step 6 enrichment fills in the fuller properties. Before layering on the patterns below, re-run the generic ID-matching detection (the patterns in the "Manual Relationship Inference" table of `.github/skills/shared/azure-resource-model.md`) against the enriched properties and merge any newly-found relationships into the baseline array, de-duplicating against relationships already present. Then use the patterns below to add diagram-specific edge styles and detect relationships the generic ID matching cannot see (connection strings, Key Vault reference syntax, RBAC scope strings, co-location).
 
 Analyze enriched resource properties to discover the remaining relationships the baseline cannot see — none of these are direct ARM ID references, so generic ID matching misses them. (Edge styling for the resulting relationship types is defined once in `drawio-diagram-conventions.md` §5 — do not re-specify colors here.)
 
@@ -263,7 +274,7 @@ Create a solution folder containing the generated diagram and metadata.
 
 **9a. Confirm the solution folder**
 
-The solution folder was created in Step 3e. Save the diagram file here now (see Step 9b).
+The solution folder was created in Step 3f. Save the diagram file here now (see Step 9b).
 
 **9b. Save the diagram**
 
