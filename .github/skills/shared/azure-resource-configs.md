@@ -9,7 +9,7 @@ For per-resource defaults such as SKUs, sizes, and service settings, derive valu
 ## Property Mapping Source of Truth
 
 
-The full Azure Property Retrieval Mapping lives in [`shared/data/azure-property-paths.json`](../data/azure-property-paths.json).
+The full Azure Property Retrieval Mapping lives in [`data/azure-property-paths.json`](data/azure-property-paths.json).
 
 Use that JSON file, not this markdown file, when a skill or script needs to:
 

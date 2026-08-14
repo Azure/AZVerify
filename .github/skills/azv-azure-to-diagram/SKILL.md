@@ -257,7 +257,7 @@ If a resource type has no entry in `azure-stencil-mapping.json`, use the generic
 
 **Multi-page diagrams**: When the resource group includes networking subnets or monitoring resources that survived filtering, generate additional pages alongside "Architecture Overview":
 - **Network Topology page**: Generated when the filtered resources include VNets with subnets. Follow the network topology layout rules in `.github/skills/shared/drawio-diagram-conventions.md` section 7e. Use a 3-column × N-row subnet grid grouped by function tier. Place resources inside subnets only when a confirmed VNet Integration or subnet delegation exists (e.g., a Managed Identity or WAF with an actual subnet association); ASPs and other resources without VNet Integration should be placed in a separate swimlane outside the VNet container — never in a scattered row at the bottom of the VNet. Add per-subnet route table icons instead of radiating edges from a central icon. Target `pageWidth="1800" pageHeight="1600"` — the page MUST NOT require horizontal scrolling on a 1920px display.
-- **Monitoring page**: Generated only when alert rules or action groups survive filtering — this can only happen if the user explicitly requested their inclusion via a Step 2b filter (see Step 4 note); otherwise the standard exclusion rules remove them and no Monitoring page is generated. Layout: single flat row of alert rules linked to their telemetry resources. `pageWidth="1800"` is sufficient.
+- **Monitoring page**: Generated when alert rules or action groups are present in the filtered model. Do not assume that a Step 2b inclusion filter overrides Step 4's standard exclusions. Layout: single flat row of alert rules linked to their telemetry resources. `pageWidth="1800"` is sufficient.
 
 **8f. Generate the diagram**
 
@@ -266,7 +266,7 @@ Use the Draw.io MCP tool (`mcp_drawio_create_diagram` or `mcp_draw_io_create_dia
 - Do NOT echo or print the Draw.io XML in the response — it is passed directly to the MCP tool
 - After the diagram is created, confirm with a single line: `Diagram created with N resource cells and M edges.`
 
-If the Draw.io MCP tool is unavailable or returns an error, write the assembled XML string to `<folder-name>.drawio` directly using the file system tool and note in the completion summary that the file was written without MCP validation. If both the Draw.io MCP tool and the file system tool are unavailable, report the failure to the user, output the raw XML in a fenced code block labeled with the intended filename, and stop.
+If the Draw.io MCP tool is unavailable or returns an error, write the assembled XML string to `<folder-name>.drawio` directly using the file system tool and note in the completion summary that the file was written without MCP validation. If both the Draw.io MCP tool and the file system tool are unavailable, report the failure to the user and stop without outputting the raw XML.
 
 ### 9. Create Solution Folder Output
 
