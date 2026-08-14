@@ -111,7 +111,7 @@ Found **N resources** in `<rg-name>` — now filtering and enriching.
 
 **3b. Subscription scope**
 
-Run the same script with `-SubscriptionId <sub-id>` instead of `-ResourceGroup`. Pass user-specified resource type filters and exclusions from Step 2b as a `-ResourceTypeFilter` parameter to the script if supported; otherwise filter the emitted JSON before writing to the temporary model file. These user filters are distinct from the Step 4 standard exclusion rules applied by `-Mode diagram`, which never handles user filters.
+Run the same script with `-SubscriptionId <sub-id>` instead of `-ResourceGroup`. If the user specified a resource type **inclusion** filter in Step 2b (e.g., "only show networking resources"), pass it as a `-ResourceTypeFilter` parameter to the script if supported; otherwise filter the emitted JSON before writing to the temporary model file. Do **not** apply user-specified **exclusions** here — those are applied exactly once, in Step 4, alongside the standard exclusion rules, to avoid filtering the same resource list twice.
 
 If the script exits non-zero or produces unparseable output, report the error message to the user and stop. If the result count is zero, warn the user that the authenticated identity may lack Reader permissions on this subscription.
 
@@ -154,9 +154,8 @@ Run `pwsh .github/skills/shared/scripts/Select-AzureResources.ps1 -InputFile <re
 
 If the script exits non-zero or produces unparseable output, report the error message to the user and stop. Do not proceed with an empty or partial resource list.
 
-Also apply any user-specified exclusion filters from Step 2b.
+Also apply any user-specified **exclusion** filters from Step 2b now — this is the only place exclusions are applied (inclusion filters, if any, were already applied in Step 3a/3b).
 
-> **Key difference from Bicep skills**: Diagrams exclude monitoring/identity infrastructure (Application Insights, Log Analytics, action groups, user-assigned identities, diagnostic settings). See the "Exclude for Diagrams" column.
 
 **If all resources are filtered out**, report "No Diagram-Worthy Resources" and stop execution.
 
@@ -186,9 +185,11 @@ Use resource-type-specific Azure MCP tools to retrieve detailed properties for r
 
 **Prefer batch CLI enrichment over per-resource MCP calls** to reduce output volume:
 
-1. **Batch approach (preferred):** Run a single `az resource list --resource-group <rg> -o json` with `--query` to get all resources with their full properties in one call. Parse the JSON output to extract relationship-relevant properties.
-2. **Targeted MCP calls:** Only use per-resource MCP calls for resource types that need specific APIs not available in the batch output (e.g., `az webapp config appsettings list` for App Service app settings).
-3. Store enriched properties alongside the base resource information in the temporary resource model file.
+1. **Batch approach (preferred):** Run a single `az resource list --resource-group <rg> -o json` with `--query` to get all resources with their full properties in one call. Parse the JSON output to extract relationship-relevant properties. As each resource is enriched this way, record its enrichment source (`batch`) in a local tracking variable (e.g., a map of resource ID → `batch`/`targeted`/`failed`).
+2. **Determine remaining gaps:** After the batch query, before making any MCP calls, produce a list of resource types still needing targeted calls — i.e., types whose relationship-relevant properties are not present in the batch output (per `.github/skills/shared/data/azure-property-paths.json`).
+3. **Targeted MCP calls:** Only use per-resource MCP calls for the resource types identified in step 2 that need specific APIs not available in the batch output (e.g., `az webapp config appsettings list` for App Service app settings). Update the tracking variable to `targeted` for each resource enriched this way, or `failed` if the call errors or is unavailable.
+4. Store enriched properties alongside the base resource information in the temporary resource model file.
+5. Use the tracking variable (not re-derivation) to produce the accurate counts (K batch, J targeted, W failed/warnings) in the summary line below.
 
 **Output discipline during enrichment:**
 - Do NOT print a status line per resource
@@ -244,8 +245,8 @@ Follow all diagram construction rules: canvas format, stencil mapping lookup, re
 If a resource type has no entry in `azure-stencil-mapping.json`, use the generic Azure resource stencil `mxgraph.azure2.general` and append a warning to the completion summary listing unmapped types so the user can update the mapping file.
 
 **Multi-page diagrams**: When the resource group includes networking subnets or monitoring resources that survived filtering, generate additional pages alongside "Architecture Overview":
-- **Network Topology page**: Generated when the filtered resources include VNets with subnets. Follow the network topology layout rules in `.github/skills/shared/drawio-diagram-conventions.md` section 7e. Use a 3-column × N-row subnet grid grouped by function tier. Place supporting resources (ASPs, Managed Identities, WAF) inside their parent subnets — never in a scattered row at the bottom of the VNet. Add per-subnet route table icons instead of radiating edges from a central icon. Target `pageWidth="1800" pageHeight="1600"` — the page MUST NOT require horizontal scrolling on a 1920px display.
-- **Monitoring page**: Generated only when alert rules or action groups survive filtering (i.e., the user's filter explicitly included them). Do not generate a Monitoring page if all monitoring resources were excluded in Step 4. Layout: single flat row of alert rules linked to their telemetry resources. `pageWidth="1800"` is sufficient.
+- **Network Topology page**: Generated when the filtered resources include VNets with subnets. Follow the network topology layout rules in `.github/skills/shared/drawio-diagram-conventions.md` section 7e. Use a 3-column × N-row subnet grid grouped by function tier. Place resources inside subnets only when a confirmed VNet Integration or subnet delegation exists (e.g., a Managed Identity or WAF with an actual subnet association); ASPs and other resources without VNet Integration should be placed in a separate swimlane outside the VNet container — never in a scattered row at the bottom of the VNet. Add per-subnet route table icons instead of radiating edges from a central icon. Target `pageWidth="1800" pageHeight="1600"` — the page MUST NOT require horizontal scrolling on a 1920px display.
+- **Monitoring page**: Generated only when alert rules or action groups survive filtering — this can only happen if the user explicitly requested their inclusion via a Step 2b filter (see Step 4 note); otherwise the standard exclusion rules remove them and no Monitoring page is generated. Layout: single flat row of alert rules linked to their telemetry resources. `pageWidth="1800"` is sufficient.
 
 **8f. Generate the diagram**
 
@@ -254,7 +255,7 @@ Use the Draw.io MCP tool (`mcp_drawio_create_diagram` or `mcp_draw_io_create_dia
 - Do NOT echo or print the Draw.io XML in the response — it is passed directly to the MCP tool
 - After the diagram is created, confirm with a single line: `Diagram created with N resource cells and M edges.`
 
-If the Draw.io MCP tool is unavailable or returns an error, write the assembled XML string to `<folder-name>.drawio` directly using the file system tool and note in the completion summary that the file was written without MCP validation.
+If the Draw.io MCP tool is unavailable or returns an error, write the assembled XML string to `<folder-name>.drawio` directly using the file system tool and note in the completion summary that the file was written without MCP validation. If both the Draw.io MCP tool and the file system tool are unavailable, report the failure to the user, output the raw XML in a fenced code block labeled with the intended filename, and stop.
 
 ### 9. Create Solution Folder Output
 
