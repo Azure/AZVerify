@@ -1,33 +1,28 @@
 ---
 name: azv-azure-to-bicep
-description: Reverse-engineer a live Azure scope (resource group or filtered subscription) into deployment-ready Bicep templates. Discovers resources via Azure MCP, extracts full configurations, generates modular Bicep with parameter files, and documents out-of-scope dependencies that require separate changes.
+description: Reverse-engineer a live Azure scope (resource group or filtered subscription) into deployment-ready, modular Bicep templates with parameter files. Use when the user wants to bring existing Azure infrastructure under Bicep/IaC management.
 license: MIT
-metadata:
-  author: AzVerify
-  version: "1.0"
-  project: AzVerify
+compatibility: Requires an authenticated Azure session (CLI, Az PowerShell, or Azure MCP).
 ---
 
 Discover resources in a live Azure scope, extract their full configuration, and generate deployment-ready Bicep templates with modular structure, user-editable parameter files, and dependency documentation for external resources.
 
 **Input**: An Azure scope — a resource group name (primary) or a subscription ID with optional resource type filter. Optionally, a target environment hint (dev/prod) to influence default sizing in the parameter file.
 
-**Tools required**: File system tools (read/write files), Terminal (for running `az` CLI commands), Azure MCP server tools (`mcp_azure_group_resource_list`, `mcp_azure_compute`, `mcp_azure_storage`, `mcp_azure_subscription_list`, etc.), Bicep MCP server (for best-practice validation via `get_bicep_best_practices` and `get_az_resource_type_schema`)
+**Tools used**: File system tools (read/write files), Terminal (for running `az` CLI commands and PowerShell 7 / `pwsh` shared scripts), Azure Best Practices MCP (`azure-get_azure_bestpractices`), Bicep Schema MCP (`azure-bicepschema`), and Azure Documentation MCP (`azure-documentation`).
 
-**Reference files**:
-- `.github/skills/shared/azure-resource-model.md` — Shared resource metadata model definition
-- `.github/skills/shared/azure-resource-configs.md` — Per-resource-type configuration schemas with defaults
-- `.github/skills/shared/azure-deployment-verification.md` — **Pre-deployment verification rules (MUST run before presenting results)**
+### Tool Preflight
 
-**Shared procedures** (MUST follow):
-- `.github/skills/shared/bicep-best-practices.md` — **Bicep generation rules, defaults, and security settings (MUST read before generating Bicep)**
-- `.github/skills/shared/version-currency.md` — **Version verification rules (MUST verify before generating code)**
-- `.github/skills/shared/procedures/azure-authentication.md` — Azure session check procedure
-- `.github/skills/shared/procedures/resource-filtering.md` — Resource exclusion lists (use "Exclude for Bicep" column)
-- `.github/skills/bicep/SKILL.md` — Bicep conventions for this repository
-- `.github/skills/powershell/SKILL.md` — PowerShell scripting conventions
+Before discovery, verify the capabilities used by this workflow:
 
-## Output Budget Rules (CRITICAL)
+1. Call `azure-get_azure_bestpractices` with `get_azure_bestpractices_get` for general code generation guidance.
+2. Call `azure-bicepschema` with `bicepschema_get` for every resource type whose API version or deployable schema is uncertain.
+3. Use `azure-documentation` search and fetch for current service guidance when a schema call does not answer the question.
+
+If a capability is unavailable, continue only when the matching shared reference plus Bicep CLI validation can provide the same check; report the fallback in the verification summary.
+
+
+## Output Budget Rules
 
 **This skill frequently handles 20-40+ resources. To avoid hitting the LLM response length limit, follow these rules strictly:**
 
@@ -36,13 +31,28 @@ Discover resources in a live Azure scope, extract their full configuration, and 
 3. **No per-resource progress messages.** During extraction, print a single summary after the batch (e.g., "Extracted 34 resources (3 partial)").
 4. **Batch CLI calls.** Use `az resource list` with `--query` for bulk discovery rather than per-resource MCP calls.
 5. **Build Bicep files directly.** Write generated code to files. Do NOT echo full Bicep/bicepparam content in the response — show only file paths and a summary of what was generated.
-6. **Delete intermediate files.** After generation is complete, delete all intermediate extraction files (`extract-*.json`, `resource-list-raw.json`, and the temporary resource model JSON file) from the output folder. Never leave the resource model JSON behind after the skill completes. Only final deliverables should remain.
+6. **Delete intermediate files.** Intermediate extraction files (`extract-*.json`, `resource-list-raw.json`, and the temporary resource model JSON file) are never deliverables. Keep them available until Step 11 has written the README (it needs the resource counts and extraction stats), then delete them all in Step 12. Never leave the resource model JSON behind after the skill completes.
+
+## Fallback: pwsh Unavailable
+
+If `pwsh`/`powershell.exe` or a shared script cannot be executed, use the fallback that matches the step you are on, then continue the workflow normally:
+
+| Step | Fallback source |
+|------|-----------------|
+| 1 — Auth check | MCP auth probe fallback in `.github/skills/shared/procedures/azure-authentication.md` |
+| 3 — Discovery | "Script/pwsh Unavailable — MCP Fallback" in `.github/skills/shared/azure-resource-configs.md` |
+| 4 — Filtering | Inline fallback in `.github/skills/shared/procedures/resource-filtering.md` |
+| 6a — Property extraction | "Script/pwsh Unavailable — MCP Fallback" in `.github/skills/shared/azure-resource-configs.md` |
+| 6b — Read-only stripping and secrets | Manual strip rules listed in Step 6b, using `.github/skills/shared/data/arm-readonly-properties.json` |
+| 7a — Relationships | "Manual Relationship Inference — Script Unavailable Fallback" in `.github/skills/shared/azure-resource-model.md` |
+
+Stop only if Azure MCP is also unavailable, using the prerequisite message in `.github/skills/shared/azure-resource-configs.md`.
 
 ## Steps
 
 ### 1. Check Azure Authentication
 
-Follow the procedure in `.github/skills/shared/procedures/azure-authentication.md`. **HARD GATE** — stop if not authenticated.
+Run `pwsh .github/skills/shared/scripts/Test-AzureAuth.ps1` — see `.github/skills/shared/procedures/azure-authentication.md` for the script contract. The script writes a JSON status object to stdout and exits non-zero when no Azure session is found. A **non-zero exit code is a HARD GATE**: present the authentication instructions from the contract doc and stop. *(If pwsh or the script is unavailable, see "Fallback: pwsh Unavailable".)*
 
 ### 2. Accept Inputs
 
@@ -90,7 +100,13 @@ Enumerate all resources in the specified Azure scope.
 
 **3a. Resource group scope**
 
-Use `mcp_azure_group_resource_list` to enumerate all resources in the resource group. For each discovered resource, extract: `id`, `name`, `type`, `location`, `tags`, `sku` (if present).
+Run the shared discovery script and write the resource model to a temporary JSON file in the output folder:
+
+```
+pwsh .github/skills/shared/scripts/Get-AzureResourceModel.ps1 -ResourceGroup <rg-name> -OutFile <output-folder>/resource-model.json
+```
+
+The script emits the shared resource model contract (`id`, `name`, `type`, `location`, `tags`, `sku`) documented in `.github/skills/shared/azure-resource-model.md`. Treat the emitted JSON as the source of truth for Steps 4-7. Do not print the model contents.
 
 Display progress:
 ```
@@ -99,11 +115,15 @@ Display progress:
 
 **3b. Subscription scope**
 
-Use Azure MCP tools or `az resource list --subscription <sub-id>` to discover resources across the subscription. Apply any user-specified resource type filters.
+Run the same script with `-SubscriptionId <sub-id>` instead of `-ResourceGroup`. Pass user-specified resource type filters from Step 2b as a `-ResourceTypeFilter` parameter to the script if supported; otherwise filter the emitted JSON before writing to the temporary model file. These user filters are distinct from the Step 4 standard exclusion rules applied by `-Mode bicep`, which never handles user filters.
 
-**3c. Handle empty results**
+**3c. Script/pwsh unavailable — MCP fallback**
 
-If no resources are found (or none remain after filtering):
+If `pwsh`/`powershell.exe` or the script cannot be executed, build the same resource model through Azure MCP as described in "Fallback: pwsh Unavailable" (list resources with `mcp_azure_group_resource_list`, then assemble the model shape by hand).
+
+**3d. Handle empty results**
+
+If no resources are found after discovery:
 ```
 ## No Resources Found
 
@@ -113,26 +133,34 @@ If you expected resources here, verify:
 - The resource group name is spelled correctly
 - You're connected to the correct subscription (`az account show`)
 - Resources have been deployed to this scope
+- The authenticated identity has read permissions on this resource group
 ```
+
+
+
 - Stop execution
 
 ### 4. Filter Non-Deployable Resources
 
-Apply the filtering rules from `.github/skills/shared/procedures/resource-filtering.md` using the **"Exclude for Bicep"** column.
+Run `pwsh .github/skills/shared/scripts/Select-AzureResources.ps1 -InputFile <resource-model.json> -Mode bicep` — see `.github/skills/shared/procedures/resource-filtering.md` for the script contract. The script applies the shared exclusion rules, writes the filtered resource model JSON to stdout, and should be treated as the source of truth for the remaining steps. *(If pwsh or the script is unavailable, see "Fallback: pwsh Unavailable".)*
 
-> **Key difference from diagram skills**: Bicep keeps deployable monitoring/identity resources (Application Insights, Log Analytics, action groups, user-assigned identities, diagnostic settings). See the "Exclude for Bicep" column in the shared filtering reference.
+If the script exits non-zero or produces unparseable output, report the error message to the user and stop. Do not proceed with an empty or partial resource list.
 
 Also apply any user-specified exclusion filters from Step 2b.
 
-Display the filtered resource list as a table with columns: #, Resource, Type, Location, SKU.
+If the filtered resource list is empty after all exclusion rules have been applied, stop and present:
+```
+All discovered resources were excluded by filtering rules. No Bicep templates can be generated.
+Review the exclusion rules in `.github/skills/shared/procedures/resource-filtering.md` or adjust your resource type filter.
+```
+
+Display the filtered resource list:
+- If the filtered count is **10 or fewer**: display the full table inline with columns: #, Resource, Type, Location, SKU.
+- If the filtered count **exceeds 10**: print only the count and a resource-type breakdown summary in the chat response. Create `original-request.md` in the output folder (recording the original user request and scope details at the top), then append the full resource table to it. Reference the file in the chat response.
 
 ### 5. Check for Large Scope
 
-If the filtered resource count exceeds **30**, warn the user and offer:
-1. **Filter by type** — present unique resource types with counts, let user select
-2. **Generate all** — proceed with all resources (templates split into modules by category)
-
-Re-filter if the user selects option 1, then continue.
+If the filtered resource count exceeds **30**, print a warning that lists unique resource types with counts, then automatically proceed to generate all resources. Templates will be split into modules by category. Do not pause for user confirmation.
 
 ### 6. Deep Property Extraction
 
@@ -140,62 +168,31 @@ For each discovered resource, extract the **full** resource configuration from A
 
 **6a. Extraction method**
 
-For each resource, use the most detailed tool available:
+Prefer running the shared script over manual per-resource extraction:
 
-| Resource Type | Preferred Tool | Fallback |
-|---------------|---------------|----------|
-| `Microsoft.Compute/virtualMachines` | `mcp_azure_compute` | `az vm show --ids <id>` |
-| `Microsoft.Storage/storageAccounts` | `mcp_azure_storage` | `az storage account show --ids <id>` |
-| `Microsoft.Web/sites` | Azure MCP | `az webapp show --ids <id>` |
-| `Microsoft.Network/virtualNetworks` | Azure MCP | `az network vnet show --ids <id>` |
-| All other types | — | `az resource show --ids <id>` |
-
-For App Services, also extract app settings separately:
-- `az webapp config appsettings list --ids <id>`
-
-Display progress:
 ```
-⏳ Extracting configuration (1/N): `<resource-name>` (<resource-type>)...
+pwsh .github/skills/shared/scripts/Get-AzureResourceModel.ps1 -ResourceGroup <rg> -Enrich -Mode bicep -StripReadOnly -OutFile <path>
 ```
 
-**6b. Property filtering — remove read-only ARM properties**
+`-Enrich` fetches full resource detail (`az resource show` per resource) and extracts per-resource-type properties using the mappings in `.github/skills/shared/data/azure-property-paths.json` (`mcpTool` preferred, `fallback` CLI command per resource type, plus `armJsonPath`/composite rules for individual properties). `-Mode bicep` also applies the Step 4 filtering rules automatically.
 
-Strip properties that are read-only, computed, or ARM-internal before converting to Bicep:
+**Generation boundary:** Azure responses contain a mix of deployable configuration and computed state. Generate Bicep only from each model resource's `deployableProperties`, plus explicitly preserved deployable top-level values (`location`, `tags`, `sku`, `kind`, and managed identity configuration). Use the raw `properties` bag only for relationship discovery. Never serialize an unreviewed raw `properties` bag into generated Bicep.
 
-**Always remove:**
-- `provisioningState`
-- `resourceGuid`
-- `etag`
-- `id` (at property level — the top-level resource ID is kept for reference only)
-- `name` (at property level — derived from the Bicep resource declaration)
-- `type` (at property level — derived from the Bicep resource type)
-- `createdDate`, `createdTime`, `lastModifiedDate`, `lastModifiedTime`, `changedTime`
-- `uniqueId`
-- `tenantId` (in resource properties — not in identity blocks)
+If `pwsh` or the script is unavailable, see "Fallback: pwsh Unavailable" to enrich and extract properties by hand.
 
-**Remove conditionally:**
-- `identity.principalId` and `identity.tenantId` — these are outputs of identity assignment, not inputs
-- `privateEndpointConnections` — these are read-only; private endpoints are deployed as separate resources
-- `networkProfile.resourceGuid`
+After all resources are extracted, print a single batch summary (e.g., `✅ Extracted 34 resources (3 partial, 2 skipped)`). Do not print per-resource progress lines.
 
-**Keep:**
-- `identity.type` and `identity.userAssignedIdentities` — these ARE inputs
-- `sku`, `kind`, `location`, `tags` — all deployable
-- All properties under `properties` that are not in the remove list
+**6b. Property filtering and secrets detection**
 
-**6c. Secrets detection**
+The `-StripReadOnly` switch in the Step 6a command removes read-only, computed, and ARM-internal properties (`provisioningState`, `resourceGuid`, `etag`, timestamps, property-level `id`/`name`/`type`, `identity.principalId`, `privateEndpointConnections`, …) and flags secret-bearing properties. The rules live in `.github/skills/shared/data/arm-readonly-properties.json`.
 
-Scan all extracted properties for sensitive values that cannot be exported:
+If `pwsh` or the script is unavailable, apply the same rules by hand: strip the `alwaysRemoveAnyDepth` names at any depth and the `alwaysRemoveAtRoot` names at the root of each `properties` bag, apply `removePaths`, and never strip `keepPaths` (`identity.type`, `identity.userAssignedIdentities`) or the deployable `sku`, `kind`, `location`, and `tags`.
 
-**Patterns indicating secrets:**
-- Properties named `*password*`, `*secret*`, `*key*`, `*connectionString*`, `*accessKey*`
-- Values that are masked (e.g., `"****"`, empty strings where a value is expected)
-- App settings containing connection strings, instrumentation keys, or SAS tokens
+**6c. Handling flagged secrets**
 
-For each detected secret:
-- Record the property path (e.g., `properties.administratorLoginPassword`)
-- Mark it for `@secure()` parameter generation with `readEnvironmentVariable()` in the `.bicepparam`
-- Add to the output summary as a "requires manual configuration" item
+The script writes an optional `secrets` array of dotted property paths on each affected resource (see `.github/skills/shared/azure-resource-model.md`). For every flagged path:
+- Generate a `@secure()` parameter whose `.bicepparam` value uses `readEnvironmentVariable()` — see `.github/skills/shared/bicep-best-practices.md`
+- Add it to the output summary as a "requires manual configuration" item
 
 **6d. Graceful fallback**
 
@@ -211,46 +208,13 @@ Analyze extracted properties to identify relationships between resources — bot
 
 **7a. Internal relationships (resources within the scope)**
 
-These determine module structure and resource ordering in Bicep.
-
-| Pattern | Detection Method | Bicep Implication |
-|---------|-----------------|-------------------|
-| **Subnet membership** | NIC's `ipConfigurations[].subnet.id` references a VNet/subnet in scope | Subnet declared inside VNet module; NIC references subnet via symbolic ref |
-| **Private endpoint links** | PE's `privateLinkServiceConnections[].privateLinkServiceId` references a resource in scope | PE in networking module with `dependsOn` on target resource |
-| **App Service Plan binding** | Web App's `serverFarmId` references an ASP in scope | ASP and Web App in same module; Web App depends on ASP |
-| **NIC-to-VM binding** | VM's `networkProfile.networkInterfaces` references a NIC in scope | NIC deployed before VM; VM references NIC via symbolic ref |
-| **Diagnostic settings** | Resource's diagnostic settings target a Log Analytics workspace in scope | Diagnostic setting as child resource with `parent:` |
-| **Key Vault references** | App settings contain `@Microsoft.KeyVault(SecretUri=...)` referencing a vault in scope | Output Key Vault URI; Web App depends on Key Vault |
-| **App Insights connection** | App settings contain `APPLICATIONINSIGHTS_CONNECTION_STRING` matching an AI resource in scope | Web App depends on Application Insights; connection string as output |
-| **NSG-to-subnet binding** | Subnet's `networkSecurityGroup.id` references an NSG in scope | NSG deployed before subnet; subnet references NSG |
-| **User-assigned identity** | Resource's `identity.userAssignedIdentities` references an identity in scope | Identity deployed first; resource references identity |
+Use the `relationships` array already present on each resource in the model produced by `Get-AzureResourceModel.ps1` (`contains`, `connects`, `depends`, `secures` — see `.github/skills/shared/azure-resource-model.md`). These determine module structure and resource ordering in Bicep. *(If pwsh or the script was unavailable in Step 6, see "Fallback: pwsh Unavailable" to detect relationships and their Bicep implications by hand.)*
 
 **7b. External dependencies (resources OUTSIDE the scope)**
 
 These are resources that the in-scope resources depend on but that live in other resource groups, subscriptions, or tenants. They **cannot** be deployed by the generated Bicep — they need separate coordination.
 
-**Detection patterns:**
-
-| Pattern | Detection Method | Dependency Type |
-|---------|-----------------|-----------------|
-| **VNet peering to external VNet** | VNet's `virtualNetworkPeerings[].remoteVirtualNetwork.id` points outside scope | `vnet-peering` — both sides must be configured |
-| **Private DNS zone in another RG** | Private endpoint's `privateDnsZoneGroups[].privateDnsZones[].id` points outside scope | `private-dns-zone` — A record must be created in the external zone |
-| **Log Analytics workspace in shared RG** | Diagnostic settings target a workspace outside scope | `log-analytics` — workspace must exist; may need access policy |
-| **Key Vault in another RG** | App settings reference a Key Vault outside scope | `key-vault-access` — access policy or RBAC role needed on external vault |
-| **Subnet in external VNet** | NIC or PE references a subnet in a VNet outside scope | `external-subnet` — subnet must exist with sufficient address space |
-| **Container registry in another RG** | Container App or AKS references an ACR outside scope | `container-registry` — AcrPull role needed for the identity |
-| **DNS zone in another subscription** | Custom domain configuration references external DNS | `dns-zone` — CNAME/A record must be created |
-| **RBAC on external resources** | Managed identity needs roles on resources outside scope | `rbac-assignment` — role assignment on external resource |
-| **Hub VNet route tables** | UDR references a firewall or NVA outside scope | `route-table` — routes in hub must point to correct next-hop |
-
-For each external dependency, record:
-- `type` — dependency category from the table above
-- `resourceId` — full ARM resource ID of the external resource
-- `resourceType` — Azure resource type
-- `resourceName` — display name
-- `dependedOnBy` — list of in-scope resources that depend on this
-- `requiredAction` — what configuration change is needed on the external resource
-- `ownerHint` — team or contact (inferred from tags if available, e.g., `costcenter`, `owner`, `team` tags)
+Detect them using the detection patterns and record them in the field shape defined in the "External Dependency Detection" section of `.github/skills/shared/azure-resource-model.md`. The `type` values recorded there drive the dependency templates generated in Step 9.
 
 **7c. Present relationship summary**
 
@@ -264,7 +228,12 @@ If external dependencies exist, warn: "⚠️ M external dependencies require ou
 
 Generate **all** Bicep files and the `.bicepparam` file in a single pass. Do not wait for user confirmation.
 
-Use `.github/skills/shared/azure-resource-configs.md` for per-resource defaults and `.github/skills/shared/bicep-best-practices.md` for generation rules.
+**Before writing any files:**
+- Sanitize the scope name for use as a folder name: replace spaces with hyphens, remove characters not in `[a-zA-Z0-9_\-.]`, and truncate to 64 characters. Use the sanitized name as the output folder name and record the original scope name in the README.
+- Write all output files to `./<sanitized-scope-name>/` relative to the workspace root.
+- If a directory with that name already exists, warn the user and ask whether to overwrite or choose an alternate folder name before writing any files. This overwrite check is the only user confirmation pause permitted during generation. All other steps proceed without confirmation.
+
+Use `.github/skills/shared/azure-resource-configs.md` for per-resource defaults and `.github/skills/shared/bicep-best-practices.md` for generation rules. Use the Tool Preflight capabilities to validate uncertain resource schemas and API versions.
 
 **Output structure:**
 ```
@@ -277,7 +246,8 @@ Use `.github/skills/shared/azure-resource-configs.md` for per-resource defaults 
 │   ├── compute.bicep             # VMs, App Services, Container Apps, Function Apps
 │   ├── data.bicep                # SQL, Cosmos DB, Storage Accounts, Key Vault, Redis
 │   ├── identity.bicep            # User-assigned managed identities
-│   └── monitoring.bicep          # Log Analytics, Application Insights, action groups
+│   ├── monitoring.bicep          # Log Analytics, Application Insights, action groups
+│   └── other.bicep               # Resources not mapping to any above category (generated only if needed)
 └── dependencies/
     ├── README.md                 # Summary of all external dependencies
     ├── <dependency-type>.bicep   # Deployable Bicep for each external dependency
@@ -286,14 +256,13 @@ Use `.github/skills/shared/azure-resource-configs.md` for per-resource defaults 
 
 **Bicep generation rules:**
 
+Follow the **Template Structure** and **Bicepparam Comment Guidelines** sections of `.github/skills/shared/bicep-best-practices.md` for `main.bicep`, module, and `.bicepparam` structure. The following rules are specific to reverse-engineering a live environment and override the shared defaults:
+
 | Area | Rule |
 |------|------|
-| `main.bicep` | `targetScope = 'resourceGroup'`; all params with `@description()`; `@allowed()` where fixed values apply; `@secure()` for sensitive params; module refs for each category (omit `name` on module blocks); outputs for key IDs/endpoints |
-| Module files | Only generate modules with resources; each module receives only needed params; use `parent:` for child resources; `existing` blocks for cross-file parent refs; symbolic refs (`foo.id`); secure defaults |
-| `.bicepparam` | `using 'main.bicep'`; all param values; 1-3 line comments per param covering: what it controls, current Azure value, 2-3 alternatives with cost, `readEnvironmentVariable()` for secrets |
-| Param naming | camelCase, descriptive (e.g., `vmSize`, `appServicePlanSkuName`) |
-| Defaults | Match **current Azure values** (goal: reproduce existing environment); enable secure defaults (HTTPS, TLS 1.2, deny public access with PEs); note insecure current values with upgrade comments |
-| ARM-to-Bicep | Camel-case property names; arrays to Bicep syntax; `"true"`/`"false"` strings to booleans; inline resource IDs to symbolic refs |
+| Defaults | Match **current Azure values** — the goal is to reproduce the existing environment, not to apply cost-effective sizing. Still enable secure defaults (HTTPS, TLS 1.2, deny public access with PEs) and note any insecure current value with an upgrade comment |
+| `.bicepparam` comments | Extend the shared comment block with the **current Azure value** for the parameter, alongside 2–3 sizing or tier alternatives with relative cost notes. No hard line limit |
+| ARM-to-Bicep | Camel-case property names; ARM arrays to Bicep array syntax; `"true"`/`"false"` strings to booleans; inline resource IDs to symbolic refs |
 
 ### 9. Generate Out-of-Scope Dependency Bicep Templates
 
@@ -312,12 +281,17 @@ For each external dependency from Step 7b, generate a deployable `.bicep` + `.bi
 | External Subnet | Subnet with `existing` parent VNet | VNet name, subnet name, address prefix, delegations |
 | Container Registry | AcrPull role assignment | Registry name, principal ID |
 | RBAC Assignment | `Microsoft.Authorization/roleAssignments` | Target resource ID, principal ID, role definition ID |
+| DNS Zone | `existing` DNS zone with CNAME or A record | Zone name, record name, value, TTL, record type |
+| Hub Route Table | `existing` route table with routes | Route table name, route name, address prefix, next-hop IP/type |
+| Any other type | Stub `.bicep` with a comment block explaining the required manual action; no deployable resources | See comment in stub file |
 
 Each template: `targetScope = 'resourceGroup'`, top-of-file comment explaining the dependency, `existing` blocks for parents, follows all Bicep best practices, outputs key resource ID. Only generate templates for detected dependencies.
 
 ### 10. Validate Generated Bicep
 
 Run the **full verification ruleset** from `.github/skills/shared/azure-deployment-verification.md`. This is mandatory — do not skip. Check all rule categories: SKU dependencies, resource compatibility, networking, security, regional availability, version currency, Bicep best practices, missing dependencies, and parameter completeness. Present results using the shared verification output format. Auto-fix errors where possible. Do not present code with known errors.
+
+If errors remain after auto-fix attempts, halt delivery of the affected files, present the specific errors to the user with remediation suggestions, and ask whether to proceed with the warnings-only files or stop entirely.
 
 ### 11. Write README and Present Output Summary
 
@@ -349,5 +323,3 @@ Only final deliverables should remain: `main.bicep`, `.bicepparam`, `modules/`, 
 - `.bicepparam` defaults to **current Azure values** — deploying recreates the same resources
 - External dependencies are standalone `.bicep`/`.bicepparam` pairs in `dependencies/`
 - All files generated in a **single pass** — no intermediate confirmation
-- Generated Bicep uses **secure defaults** — upgrades insecure settings with comments
-- MUST call Bicep MCP `get_bicep_best_practices` and follow shared procedures before generating code

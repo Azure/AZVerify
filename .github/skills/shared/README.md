@@ -6,7 +6,7 @@ This folder contains the shared contracts, reference data, procedures, and scrip
 
 | Path | Purpose |
 |---|---|
-| `azure-resource-model.md` | Canonical resource-model contract shared by diagram, Bicep, and Azure comparisons. |
+| `azure-resource-model.md` | Canonical resource-model contract shared by diagram, Bicep, and Azure comparisons; also holds the manual relationship-inference fallback and external dependency detection patterns. |
 | `azure-resource-configs.md` | Human-readable configuration guidance, defaults, and comparison notes per Azure resource type. |
 | `azure-deployment-verification.md` | Pre-deployment validation rules used before generating Bicep or Azure update guidance. |
 | `azure-stencil-mapping.json` | Draw.io stencil lookup for Azure resource types. |
@@ -57,6 +57,7 @@ This contract lets one parser feed multiple downstream skills. For example, a di
 |---|---|---|
 | `data/resource-filter-rules.json` | `Select-AzureResources.ps1` and filtering procedures | Encodes diagram vs Bicep inclusion rules. |
 | `data/azure-property-paths.json` | `Get-AzureResourceModel.ps1`, deep sync skills | Maps resource types to property paths, MCP hints, CLI fallbacks, and composite extraction rules. |
+| `data/arm-readonly-properties.json` | `Get-AzureResourceModel.ps1` (`-StripReadOnly`) | Read-only/ARM-internal properties to strip before Bicep generation, plus secret-bearing property patterns. |
 
 Keep these files machine-readable and stable. Skills should reference them through scripts or procedure docs rather than re-embedding the tables inline.
 

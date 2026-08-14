@@ -1,0 +1,62 @@
+{
+  "version": 1,
+  "consumedBy": [
+    "scripts/Get-AzureResourceModel.ps1"
+  ],
+  "notes": [
+    "Rules apply to the 'properties' bag of a resource in the shared resource model.",
+    "Path rules (removePaths / keepPaths) match the dotted property path and take precedence over the generic name rules; keepPaths wins over removePaths.",
+    "'sku', 'kind', 'location', and 'tags' are deployable inputs and are never stripped.",
+    "Names in alwaysRemoveAtRoot are only stripped at the root of the properties bag, because nested 'name'/'id'/'type' values (subnets, IP configurations, app settings) are deployable inputs.",
+    "Secret detection also inspects name/value pairs (app settings, connection strings): when the 'name' matches a secret pattern, the pair is reported as '<path>[<name>]' and its value is replaced with '***'."
+  ],
+  "alwaysRemoveAnyDepth": [
+    "provisioningState",
+    "resourceGuid",
+    "etag",
+    "createdDate",
+    "createdTime",
+    "lastModifiedDate",
+    "lastModifiedTime",
+    "changedTime"
+  ],
+  "alwaysRemoveAtRoot": [
+    "id",
+    "name",
+    "type",
+    "uniqueId",
+    "tenantId"
+  ],
+  "removePaths": [
+    "identity.principalId",
+    "identity.tenantId",
+    "networkProfile.resourceGuid",
+    "privateEndpointConnections"
+  ],
+  "keepPaths": [
+    "identity.type",
+    "identity.userAssignedIdentities"
+  ],
+  "secretPatterns": {
+    "namePatterns": [
+      "*password*",
+      "*secret*",
+      "*key*",
+      "*connectionstring*",
+      "*accesskey*",
+      "*sastoken*",
+      "*instrumentationkey*"
+    ],
+    "nameExclusionPatterns": [
+      "keyVault*",
+      "*publicKey*",
+      "*keyVaultUri*",
+      "*keyVaultReferenceIdentity*",
+      "keySource",
+      "keyType",
+      "keyCreationTime",
+      "key[0-9]*"
+    ],
+    "maskedValueRegex": "^\\*{2,}$"
+  }
+}

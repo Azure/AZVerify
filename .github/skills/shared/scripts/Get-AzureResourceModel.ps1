@@ -14,6 +14,10 @@ Optional Azure subscription id to scope discovery.
 .PARAMETER Enrich
 When set, performs targeted `az resource show` calls and extracts configured
 properties from `shared/data/azure-property-paths.json`.
+.PARAMETER StripReadOnly
+When set, removes read-only and ARM-internal properties using the rules in
+`shared/data/arm-readonly-properties.json`. Use for Bicep generation; leave off
+for drift comparison, which may need the full property bag.
 .PARAMETER FromJson
 Optional path to a captured `az resource list` JSON payload for offline mode.
 .PARAMETER Mode
@@ -28,6 +32,8 @@ Requires Azure CLI for live mode. Offline mode only requires a captured JSON fil
 .EXAMPLE
 pwsh Get-AzureResourceModel.ps1 -ResourceGroup rg-demo -Enrich
 .EXAMPLE
+pwsh Get-AzureResourceModel.ps1 -ResourceGroup rg-demo -Enrich -Mode bicep -StripReadOnly -OutFile model.json
+.EXAMPLE
 pwsh Get-AzureResourceModel.ps1 -FromJson .\captured-resource-list.json -Enrich -Mode diagram -OutFile model.json
 #>
 [CmdletBinding(DefaultParameterSetName = 'Live')]
@@ -40,6 +46,9 @@ param(
 
     [Parameter()]
     [switch]$Enrich,
+
+    [Parameter()]
+    [switch]$StripReadOnly,
 
     [Parameter(Mandatory = $true, ParameterSetName = 'Offline')]
     [string]$FromJson,
@@ -70,6 +79,15 @@ $compositeRuleIndex = @{}
 foreach ($compositeRule in $propertyConfig.compositeRules) {
     $compositeRuleIndex[('{0}|{1}' -f $compositeRule.resourceType, $compositeRule.property)] = $compositeRule
 }
+
+$readOnlyConfigPath = Resolve-Path -Path (Join-Path $PSScriptRoot '../data/arm-readonly-properties.json') -ErrorAction Stop
+$readOnlyConfig = Get-Content -LiteralPath $readOnlyConfigPath -Raw | ConvertFrom-Json
+
+$alwaysRemoveAnyDepth = [System.Collections.Generic.HashSet[string]]::new([string[]]$readOnlyConfig.alwaysRemoveAnyDepth, [System.StringComparer]::OrdinalIgnoreCase)
+$alwaysRemoveAtRoot = [System.Collections.Generic.HashSet[string]]::new([string[]]$readOnlyConfig.alwaysRemoveAtRoot, [System.StringComparer]::OrdinalIgnoreCase)
+$secretNameRegexes = foreach ($pattern in $readOnlyConfig.secretPatterns.namePatterns) { [System.Management.Automation.WildcardPattern]::new($pattern, 'IgnoreCase') }
+$secretExclusionRegexes = foreach ($pattern in $readOnlyConfig.secretPatterns.nameExclusionPatterns) { [System.Management.Automation.WildcardPattern]::new($pattern, 'IgnoreCase') }
+$maskedValueRegex = [regex]::new($readOnlyConfig.secretPatterns.maskedValueRegex)
 
 $isOfflineMode = $PSCmdlet.ParameterSetName -eq 'Offline'
 
@@ -273,6 +291,145 @@ function Get-EnrichedProperties {
     }
 
     return $properties
+}
+
+function Test-PropertyPathRule {
+    [CmdletBinding()]
+    param(
+        [Parameter()]
+        [AllowNull()]
+        [string[]]$Rules,
+
+        [Parameter(Mandatory = $true)]
+        [string]$Path
+    )
+
+    foreach ($rule in $Rules) {
+        if ($Path.Equals($rule, [System.StringComparison]::OrdinalIgnoreCase)) { return $true }
+        if ($Path.EndsWith(".$rule", [System.StringComparison]::OrdinalIgnoreCase)) { return $true }
+    }
+
+    $false
+}
+
+function Remove-ReadOnlyProperty {
+    [CmdletBinding()]
+    param(
+        [AllowNull()]
+        $InputObject,
+
+        [Parameter()]
+        [string]$Path = ''
+    )
+
+    if ($InputObject -is [System.Collections.IDictionary]) {
+        $result = @{}
+        foreach ($key in @($InputObject.Keys)) {
+            $name = [string]$key
+            $childPath = if ($Path) { "$Path.$name" } else { $name }
+
+            if (Test-PropertyPathRule -Rules $readOnlyConfig.keepPaths -Path $childPath) {
+                $result[$key] = $InputObject[$key]
+                continue
+            }
+
+            if (Test-PropertyPathRule -Rules $readOnlyConfig.removePaths -Path $childPath) { continue }
+            if ($alwaysRemoveAnyDepth.Contains($name)) { continue }
+            if ($Path -eq '' -and $alwaysRemoveAtRoot.Contains($name)) { continue }
+
+            $result[$key] = Remove-ReadOnlyProperty -InputObject $InputObject[$key] -Path $childPath
+        }
+
+        return $result
+    }
+
+    if ($InputObject -is [System.Collections.IEnumerable] -and $InputObject -isnot [string]) {
+        $items = New-Object System.Collections.Generic.List[object]
+        foreach ($item in $InputObject) {
+            $items.Add((Remove-ReadOnlyProperty -InputObject $item -Path $Path))
+        }
+
+        return $items.ToArray()
+    }
+
+    $InputObject
+}
+
+function Test-SecretName {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)]
+        [AllowEmptyString()]
+        [string]$Name
+    )
+
+    foreach ($exclusion in $secretExclusionRegexes) {
+        if ($exclusion.IsMatch($Name)) { return $false }
+    }
+
+    foreach ($pattern in $secretNameRegexes) {
+        if ($pattern.IsMatch($Name)) { return $true }
+    }
+
+    return $false
+}
+
+function Find-SecretProperty {
+    [CmdletBinding()]
+    param(
+        [AllowNull()]
+        $InputObject,
+
+        [Parameter(Mandatory = $true)]
+        [AllowEmptyCollection()]
+        [System.Collections.Generic.List[string]]$Found,
+
+        [Parameter()]
+        [string]$Path = ''
+    )
+
+    if ($InputObject -is [System.Collections.IDictionary]) {
+        # name/value pairs (app settings, connection strings) carry the secret in 'value'.
+        if ($InputObject.Contains('name') -and $InputObject.Contains('value') -and (Test-SecretName -Name ([string]$InputObject['name']))) {
+            $settingPath = if ($Path) { "$Path[$($InputObject['name'])]" } else { [string]$InputObject['name'] }
+            if (-not $Found.Contains($settingPath)) {
+                $Found.Add($settingPath)
+            }
+
+            $InputObject['value'] = '***'
+            return
+        }
+
+        foreach ($key in @($InputObject.Keys)) {
+            $name = [string]$key
+            $childPath = if ($Path) { "$Path.$name" } else { $name }
+            $value = $InputObject[$key]
+
+            $isSecret = Test-SecretName -Name $name
+            if (-not $isSecret -and $value -is [string] -and $maskedValueRegex.IsMatch($value)) {
+                $isSecret = $true
+            }
+
+            if ($isSecret) {
+                if (-not $Found.Contains($childPath)) {
+                    $Found.Add($childPath)
+                }
+
+                $InputObject[$key] = '***'
+                continue
+            }
+
+            Find-SecretProperty -InputObject $value -Found $Found -Path $childPath
+        }
+
+        return
+    }
+
+    if ($InputObject -is [System.Collections.IEnumerable] -and $InputObject -isnot [string]) {
+        foreach ($item in $InputObject) {
+            Find-SecretProperty -InputObject $item -Found $Found -Path $Path
+        }
+    }
 }
 
 function Get-RelationshipType {
@@ -506,8 +663,13 @@ try {
         $properties = @{}
         if ($details.PSObject.Properties.Name -contains 'properties' -and $null -ne $details.properties) {
             $properties = ConvertTo-Hashtable -InputObject $details.properties
+
+            if ($StripReadOnly.IsPresent) {
+                $properties = Remove-ReadOnlyProperty -InputObject $properties
+            }
         }
 
+        $enrichedProperties = @{}
         if ($Enrich.IsPresent) {
             $enrichedProperties = Get-EnrichedProperties -Resource $resource -ResourceJson $details
             foreach ($key in $enrichedProperties.Keys) {
@@ -520,6 +682,25 @@ try {
             $tags = ConvertTo-Hashtable -InputObject $details.tags
         }
 
+        $deployableProperties = @{}
+        if ($Enrich.IsPresent) {
+            $deployableProperties = $enrichedProperties
+        }
+
+        $sku = @{}
+        if ($details.PSObject.Properties.Name -contains 'sku' -and $null -ne $details.sku) {
+            $sku = ConvertTo-Hashtable -InputObject $details.sku
+        }
+
+        $identity = @{}
+        if ($details.PSObject.Properties.Name -contains 'identity' -and $null -ne $details.identity) {
+            $identity = ConvertTo-Hashtable -InputObject $details.identity
+            if ($StripReadOnly.IsPresent) {
+                $identity = Remove-ReadOnlyProperty -InputObject @{ identity = $identity }
+                $identity = $identity['identity']
+            }
+        }
+
         $resourceId = [string]$details.id
         $modelResource = [ordered]@{
             id = $resourceId
@@ -528,8 +709,24 @@ try {
             resourceGroup = if ($details.PSObject.Properties.Name -contains 'resourceGroup') { [string]$details.resourceGroup } else { Get-ResourceGroupFromId -ResourceId $resourceId }
             location = if ($details.PSObject.Properties.Name -contains 'location') { [string]$details.location } else { $null }
             properties = $properties
+            deployableProperties = $deployableProperties
             tags = $tags
+            sku = $sku
+            kind = if ($details.PSObject.Properties.Name -contains 'kind') { [string]$details.kind } else { $null }
+            identity = $identity
             relationships = @()
+        }
+
+        # Mask secrets in the raw discovery bag before it can be written to disk, but only
+        # require secure Bicep parameters for mapped values that generation can emit.
+        $rawSecrets = New-Object System.Collections.Generic.List[string]
+        Find-SecretProperty -InputObject $properties -Found $rawSecrets
+
+        $secrets = New-Object System.Collections.Generic.List[string]
+        Find-SecretProperty -InputObject $deployableProperties -Found $secrets
+        if ($secrets.Count -gt 0) {
+            $modelResource['secrets'] = $secrets.ToArray()
+            Write-Diag "Flagged $($secrets.Count) secret-bearing property path(s) on '$($details.name)'."
         }
 
         $resourceMap[$resourceId] = $modelResource

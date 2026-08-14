@@ -8,7 +8,7 @@ All generated code must use current, supported versions. Stale defaults cause se
 
 | Category | Verification Method | Rule |
 |---|---|---|
-| **Bicep API versions** | Use Bicep MCP `get_az_resource_type_schema` | Latest **stable** (non-preview). Only use preview if no stable exists. |
+| **Bicep API versions** | Use Bicep Schema MCP `azure-bicepschema` / `bicepschema_get` | Latest **stable** (non-preview). Only use preview if no stable exists. |
 | **Runtime stacks** | `az webapp list-runtimes` or current docs | Current LTS or latest stable. Prefer LTS over STS. Flag versions within 6 months of EOL. |
 | **Kubernetes versions** | Azure supported versions list | Currently supported AKS version |
 | **OS images** | Docs / `az vm image list` | Latest generation + LTS releases (e.g., latest Ubuntu LTS, latest Windows Server) |
