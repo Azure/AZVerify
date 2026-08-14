@@ -41,7 +41,7 @@ Each Azure environment is represented as a **resource model** — a JSON structu
 | `properties` | object | No | Resource-specific properties (SKU, tier, size, etc.). |
 | `tags` | object | No | Azure resource tags as key-value pairs. |
 | `relationships` | array | No | Connections to other resources in the model. |
-| `secrets` | array | No | Dotted property paths holding secret values (e.g., `administratorLoginPassword`, `siteConfig.appSettings[APPINSIGHTS_INSTRUMENTATIONKEY]`). Emitted by `Get-AzureResourceModel.ps1 -StripReadOnly` only when secrets are detected; each path needs a `@secure()` parameter. |
+| `secrets` | array | No | Dotted property paths holding secret values (e.g., `administratorLoginPassword`, `siteConfig.appSettings[APPINSIGHTS_INSTRUMENTATIONKEY]`). Detected values in `properties` are replaced with `***`; each path needs a `@secure()` parameter during generation. |
 
 ## Script I/O Conventions
 

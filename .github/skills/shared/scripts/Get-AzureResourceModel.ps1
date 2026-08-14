@@ -396,6 +396,7 @@ function Find-SecretProperty {
                 $Found.Add($settingPath)
             }
 
+            $InputObject['value'] = '***'
             return
         }
 
@@ -414,6 +415,7 @@ function Find-SecretProperty {
                     $Found.Add($childPath)
                 }
 
+                $InputObject[$key] = '***'
                 continue
             }
 

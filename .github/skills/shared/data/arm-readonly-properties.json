@@ -8,7 +8,7 @@
     "Path rules (removePaths / keepPaths) match the dotted property path and take precedence over the generic name rules; keepPaths wins over removePaths.",
     "'sku', 'kind', 'location', and 'tags' are deployable inputs and are never stripped.",
     "Names in alwaysRemoveAtRoot are only stripped at the root of the properties bag, because nested 'name'/'id'/'type' values (subnets, IP configurations, app settings) are deployable inputs.",
-    "Secret detection also inspects name/value pairs (app settings, connection strings): when the 'name' matches a secret pattern, the pair is reported as '<path>[<name>]'."
+    "Secret detection also inspects name/value pairs (app settings, connection strings): when the 'name' matches a secret pattern, the pair is reported as '<path>[<name>]' and its value is replaced with '***'."
   ],
   "alwaysRemoveAnyDepth": [
     "provisioningState",

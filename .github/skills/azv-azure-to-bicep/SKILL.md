@@ -2,7 +2,7 @@
 name: azv-azure-to-bicep
 description: Reverse-engineer a live Azure scope (resource group or filtered subscription) into deployment-ready, modular Bicep templates with parameter files. Use when the user wants to bring existing Azure infrastructure under Bicep/IaC management.
 license: MIT
-compatibility:Requires an authenticated Azure session (CLI, Az PowerShell, or Azure MCP).
+compatibility: Requires an authenticated Azure session (CLI, Az PowerShell, or Azure MCP).
 ---
 
 Discover resources in a live Azure scope, extract their full configuration, and generate deployment-ready Bicep templates with modular structure, user-editable parameter files, and dependency documentation for external resources.
