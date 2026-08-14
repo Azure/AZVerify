@@ -2,57 +2,56 @@
 name: azv-azure-to-diagram
 description: Reverse-engineer a live Azure scope (resource group or filtered subscription) into a professional Draw.io architecture diagram following established AzVerify conventions. Use when the user wants to visualize or document existing Azure infrastructure as a diagram.
 license: MIT
-compatibility: Prefers PowerShell 7 (pwsh) and Azure CLI (az); falls back to the Azure MCP server and inline procedures when unavailable. Requires an authenticated Azure session (CLI, Az PowerShell, or Azure MCP).
-metadata:
-  author: AzVerify
-  version: "1.0"
-  project: AzVerify
+compatibility: Requires an authenticated Azure session (CLI, Az PowerShell, or Azure MCP).
 ---
 
 Discover resources in a live Azure scope and generate a Draw.io architecture diagram with proper container hierarchy, verified icons, and inferred relationships.
 
 **Input**: An Azure scope — a resource group name (primary) or a subscription ID with optional resource type filter. The user can specify the scope or the skill will prompt for it.
 
-**Tools required**: File system tools (read/write files), Terminal (for running `az` CLI commands), Azure MCP server tools (`mcp_azure_group_resource_list`, `mcp_azure_compute`, `mcp_azure_storage`, `mcp_azure_subscription_list`, etc.), Draw.io MCP (`mcp_drawio_create_diagram` or `mcp_draw_io_create_diagram`)
+**Tools required**: File system tools (read/write files), Terminal (for running `az` CLI commands and PowerShell 7 / `pwsh` shared scripts), Azure MCP server tools (`mcp_azure_group_resource_list`, `mcp_azure_compute`, `mcp_azure_storage`, `mcp_azure_subscription_list`, etc.), Draw.io MCP (`mcp_drawio_create_diagram` or `mcp_draw_io_create_diagram`)
 
 
 ---
 
-## Output Budget Rules (CRITICAL)
+### Tool Preflight
 
-**This skill frequently handles 20-40+ resources. To avoid hitting the LLM response length limit, follow these rules strictly:**
+Before discovery, verify the capabilities used by this workflow:
 
-1. **Save data to files, don't print it.** After discovery (Step 3) and enrichment (Step 6), you may write the resource model to a temporary JSON file in the solution folder while the skill is running. Reference the temporary file in subsequent steps instead of keeping all data in the response.
-2. **Minimize inline tables.** Never print full resource tables with more than 10 rows in the response. Instead, print a count summary and write the full table to the `original-request.md` file at the end.
+1. Call `azure-get_azure_bestpractices` with `get_azure_bestpractices_get` for general code generation guidance.
+2. Call `azure-bicepschema` with `bicepschema_get` for every resource type whose API version or deployable schema is uncertain.
+3. Use `azure-documentation` search and fetch for current service guidance when a schema call does not answer the question.
 
-   **Output thresholds** (apply at every step where a list or table is displayed):
+If a capability is unavailable, continue only when the matching shared reference plus Bicep CLI validation can provide the same check; report the fallback in the verification summary.
 
-   | Item count | Chat response | File output |
-   |------------|---------------|-------------|
-   | ≤10 items | Inline table | Optional |
-   | 11–20 items | Count summary only | Save full list to file |
-   | >20 items | Count summary only + warn user | Save full list to file |
 
-3. **No per-resource progress messages.** During enrichment, do NOT print a line per resource. Print a single summary after the batch completes (e.g., "Enriched 34 resources (3 warnings)").
-4. **Batch CLI calls.** Use a single `az resource list` with `--query` to get all resources, rather than per-resource MCP calls where possible.
-5. **Build diagram XML in a file.** Write the XML to a temporary file or build it as a string internally. Do NOT echo the XML in the response.
+## Output Budget Rules
 
-**Reference files**:
-- `.github/skills/shared/azure-resource-model.md` — Shared resource metadata model definition
-- `.github/skills/shared/azure-stencil-mapping.json` — Azure resource type to Draw.io stencil mapping (includes non-obvious icon paths and naming exceptions)
-- `.github/skills/shared/azure-resource-configs.md` — Per-resource-type configuration schemas with defaults
+Follow `.github/skills/shared/procedures/output-budget.md` strictly — this skill frequently handles 20-40+ resources and can hit the LLM response length limit. In addition to the shared rules:
 
-**Shared procedures** (MUST follow):
-- `.github/skills/shared/procedures/azure-authentication.md` — Azure session check procedure
-- `.github/skills/shared/procedures/resource-filtering.md` — Resource exclusion lists (use "Exclude for Diagrams" column)
+- **Build the Draw.io diagram directly.** Write the assembled XML to the `.drawio` file via the Draw.io MCP tool. Do NOT echo full Draw.io XML content in the response — show only the file path and a summary of what was generated.
+- **Delete intermediate files on the skill's own schedule.** Intermediate extraction files (`resource-model.json`, `extract-*.json`, and any other temporary resource model JSON) are never deliverables. Keep them available until Step 9c has written `original-request.md` (it needs the resource counts and relationship tables), then delete them all in Step 9d. Never leave the resource model JSON behind after the skill completes.
 
----
+## Fallback: pwsh Unavailable
+
+If `pwsh`/`powershell.exe` or a shared script cannot be executed, use the fallback that matches the step you are on, then continue the workflow normally:
+
+| Step | Fallback source |
+|------|-----------------|
+| 1 — Auth check | MCP auth probe fallback in `.github/skills/shared/procedures/azure-authentication.md` |
+| 3 — Discovery | "Script/pwsh Unavailable — MCP Fallback" in `.github/skills/shared/azure-resource-configs.md` (see Step 3c) |
+| 4 — Filtering | Inline fallback in `.github/skills/shared/procedures/resource-filtering.md` |
+| 6a — Property extraction | "Script/pwsh Unavailable — MCP Fallback" in `.github/skills/shared/azure-resource-configs.md` |
+| 6b — Read-only stripping and secrets | Manual strip rules listed in Step 6b, using `.github/skills/shared/data/arm-readonly-properties.json` |
+| 7a — Relationships | "Manual Relationship Inference — Script Unavailable Fallback" in `.github/skills/shared/azure-resource-model.md` |
+
+Stop only if Azure MCP is also unavailable, using the prerequisite message in `.github/skills/shared/azure-resource-configs.md`.
 
 ## Steps
 
 ### 1. Check Azure Authentication
 
-Run `pwsh .github/skills/shared/scripts/Test-AzureAuth.ps1` — see `.github/skills/shared/procedures/azure-authentication.md` for the script contract. The script writes a JSON status object to stdout and exits non-zero when no Azure session is found. A **non-zero exit code is a HARD GATE**: present the authentication instructions from the contract doc and stop. *(If pwsh or the script is unavailable, follow the MCP auth probe fallback defined in the azure-authentication.md contract before stopping.)*
+Run `pwsh .github/skills/shared/scripts/Test-AzureAuth.ps1` — see `.github/skills/shared/procedures/azure-authentication.md` for the script contract. The script writes a JSON status object to stdout and exits non-zero when no Azure session is found. A **non-zero exit code is a HARD GATE**: present the authentication instructions from the contract doc and stop. *(If pwsh or the script is unavailable, see "Fallback: pwsh Unavailable".)*
 
 ### 2. Accept Inputs
 
@@ -63,7 +62,6 @@ Identify the Azure scope to discover resources from.
 **If the user specifies a resource group name:**
 - Use that resource group as the discovery scope
 - Verify the resource group exists: run `az group show --name <name>` — if this fails, report an error and stop
-- After `az group show` succeeds, confirm the returned `subscriptionId` matches the authenticated session (`az account show --query id -o tsv`). If they differ, display both IDs and ask the user to confirm before proceeding.
 
 **If the user specifies a subscription ID:**
 - Use that subscription as the discovery scope
@@ -80,9 +78,15 @@ If you want subscription-level discovery, provide a subscription ID instead.
 
 #### 2b. Identify Optional Filters
 
+**Resource type filters:**
 If the user provides a resource type filter (e.g., "only compute and networking resources"):
 - Map the filter to Azure resource type prefixes (e.g., `Microsoft.Compute/*`, `Microsoft.Network/*`)
 - Apply these filters during discovery
+
+**Resource exclusions:**
+If the user wants to exclude specific resources or types from the diagram:
+- Accept a list of resource names or type patterns to skip
+- Apply exclusions during the filtering step (Step 4), in addition to the standard "Exclude for Diagrams" rules
 
 ### 3. Discover Azure Resources
 
@@ -90,18 +94,15 @@ Enumerate all resources in the specified Azure scope.
 
 **3a. Resource group scope**
 
-Use `az resource list --resource-group <rg-name> -o json` to enumerate all resources. This single CLI call retrieves all resources with their properties in one batch — prefer this over multiple MCP calls.
+Run the shared discovery script and write the resource model to a temporary JSON file in the output folder:
 
-Alternatively, use `mcp_azure_group_resource_list` if the CLI is unavailable.
+```
+pwsh .github/skills/shared/scripts/Get-AzureResourceModel.ps1 -ResourceGroup <rg-name> -OutFile <output-folder>/resource-model.json
+```
 
-For each discovered resource, extract:
-- `id` — full ARM resource ID
-- `name` — resource name
-- `type` — Azure resource type (e.g., `Microsoft.Compute/virtualMachines`)
-- `location` — Azure region
-- `tags` — resource tags (used for filtering)
+The script emits the shared resource model contract (`id`, `name`, `type`, `location`, `tags`, `sku`) documented in `.github/skills/shared/azure-resource-model.md`. Treat the emitted JSON as the source of truth for Steps 4-7. Do not print the model contents.
 
-If the CLI command returns a non-zero exit code or the JSON output contains an error object, report the error message to the user and stop. If the command succeeds but the result count is zero and the resource group was confirmed to exist in Step 2a, warn the user that the authenticated identity may lack Reader permissions.
+If the script exits non-zero or produces unparseable output, report the error message to the user and stop. If the result count is zero and the resource group was confirmed to exist in Step 2a, warn the user that the authenticated identity may lack Reader permissions.
 
 Display a single progress line:
 ```
@@ -110,23 +111,20 @@ Found **N resources** in `<rg-name>` — now filtering and enriching.
 
 **3b. Subscription scope**
 
-Use `az resource list --subscription <sub-id> -o json` to discover resources across the subscription. Apply any user-specified resource type filters.
+Run the same script with `-SubscriptionId <sub-id>` instead of `-ResourceGroup`. Pass user-specified resource type filters and exclusions from Step 2b as a `-ResourceTypeFilter` parameter to the script if supported; otherwise filter the emitted JSON before writing to the temporary model file. These user filters are distinct from the Step 4 standard exclusion rules applied by `-Mode diagram`, which never handles user filters.
 
-For each discovered resource, extract:
-- `id` — full ARM resource ID
-- `name` — resource name
-- `type` — Azure resource type (e.g., `Microsoft.Compute/virtualMachines`)
-- `location` — Azure region
-- `tags` — resource tags (used for filtering)
-
-If the CLI command returns a non-zero exit code or the JSON output contains an error object, report the error message to the user and stop. If the command succeeds but the result count is zero, warn the user that the authenticated identity may lack Reader permissions on this subscription.
+If the script exits non-zero or produces unparseable output, report the error message to the user and stop. If the result count is zero, warn the user that the authenticated identity may lack Reader permissions on this subscription.
 
 Display a single progress line:
 ```
 Found **N resources** in subscription `<sub-id>` — now filtering and enriching.
 ```
 
-**3c. Handle empty results**
+**3c. Script/pwsh unavailable — MCP fallback**
+
+If `pwsh`/`powershell.exe` or the script cannot be executed, build the same resource model through Azure MCP as described in "Fallback: pwsh Unavailable" (list resources with `mcp_azure_group_resource_list`, then assemble the model shape by hand).
+
+**3d. Handle empty results**
 
 If no resources are found (or none remain after filtering):
 ```
@@ -141,7 +139,7 @@ If you expected resources here, verify:
 ```
 - Stop execution
 
-**3d. Create Solution Folder**
+**3e. Create Solution Folder**
 
 Create the solution folder now, before any intermediate files are written.
 
@@ -152,15 +150,21 @@ Create the solution folder now, before any intermediate files are written.
 
 ### 4. Filter Infrastructure-Only Resources
 
-Apply the filtering rules from `.github/skills/shared/procedures/resource-filtering.md` using the **"Exclude for Diagrams"** column.
+Run `pwsh .github/skills/shared/scripts/Select-AzureResources.ps1 -InputFile <resource-model.json> -Mode diagram` — see `.github/skills/shared/procedures/resource-filtering.md` for the script contract. The script applies the shared exclusion rules using the **"Exclude for Diagrams"** column, writes the filtered resource model JSON to stdout, and should be treated as the source of truth for the remaining steps. *(If pwsh or the script is unavailable, see "Fallback: pwsh Unavailable".)*
+
+If the script exits non-zero or produces unparseable output, report the error message to the user and stop. Do not proceed with an empty or partial resource list.
+
+Also apply any user-specified exclusion filters from Step 2b.
 
 > **Key difference from Bicep skills**: Diagrams exclude monitoring/identity infrastructure (Application Insights, Log Analytics, action groups, user-assigned identities, diagnostic settings). See the "Exclude for Diagrams" column.
 
 **If all resources are filtered out**, report "No Diagram-Worthy Resources" and stop execution.
 
-**Display the filtered resource list (concise):** Follow Output Budget Rules. For inline tables, use columns #, Resource, Type, Location.
+Display the filtered resource list:
+- If the filtered count is **10 or fewer**: display the full table inline with columns: #, Resource, Type, Location, SKU.
+- If the filtered count **exceeds 10**: print only the count and a resource-type breakdown summary in the chat response. Write the full resource table to the temporary resource model file in the solution folder instead of echoing it.
 
-Write the temporary resource model JSON to the solution folder created in Step 3d. It is an intermediate artifact only and must be deleted before the skill finishes.
+Write the temporary resource model JSON to the solution folder created in Step 3e. It is an intermediate artifact only and must be deleted before the skill finishes.
 
 ### 5. Check for Large Scope
 
@@ -176,21 +180,7 @@ If the user's response does not map to option 1 or option 2, re-present the two 
 
 Use resource-type-specific Azure MCP tools to retrieve detailed properties for relationship inference.
 
-**Enrichment targets** (by resource type):
-
-| Resource Type | MCP Tool | Properties to Extract |
-|---------------|----------|----------------------|
-| `Microsoft.Compute/virtualMachines` | `mcp_azure_compute` | `networkProfile.networkInterfaces`, `storageProfile.osDisk`, VM size |
-| `Microsoft.Network/virtualNetworks` | Azure MCP | `subnets` (list of subnet names and address prefixes) |
-| `Microsoft.Network/networkInterfaces` | Azure MCP | `ipConfigurations[].subnet.id`, `networkSecurityGroup.id` |
-| `Microsoft.Network/privateEndpoints` | Azure MCP | `privateLinkServiceConnections[].privateLinkServiceId` |
-| `Microsoft.Web/sites` | Azure MCP | `virtualNetworkSubnetId`, `serverFarmId` |
-| `Microsoft.Web/sites` (app settings) | `az webapp config appsettings list` | `APPLICATIONINSIGHTS_CONNECTION_STRING`, `APPINSIGHTS_INSTRUMENTATIONKEY`, connection strings referencing other resources (SQL, Cosmos DB, Storage, etc.) |
-| `Microsoft.Web/sites` (connection strings) | `az webapp config connection-string list` | Named connection strings referencing databases, storage, or other resources |
-| `Microsoft.Web/sites` (identity) | `az webapp identity show` | `userAssignedIdentities` — keys are ARM resource IDs of user-assigned managed identities |
-| `Microsoft.Storage/storageAccounts` | `mcp_azure_storage` | `networkRuleSet`, `privateEndpointConnections` |
-| `Microsoft.KeyVault/vaults` | Azure MCP | `networkAcls`, `privateEndpointConnections` |
-| `Microsoft.ManagedIdentity/userAssignedIdentities` | `az role assignment list --assignee <principalId> --all` | Role assignments — each `scope` references a target resource |
+**Enrichment targets** (by resource type): look up each in-scope resource's `resourceTypes[]` entry in `.github/skills/shared/data/azure-property-paths.json` for the MCP tool (or CLI fallback) and the ARM JSON paths to extract. That mapping is the authoritative source — see "Property Mapping Source of Truth" in `.github/skills/shared/azure-resource-configs.md` for how to consume it. Do not duplicate the mapping table here.
 
 **Enrichment process:**
 
@@ -217,21 +207,17 @@ If a resource-type-specific MCP tool fails or is unavailable:
 
 ### 7. Infer Relationships
 
-Analyze enriched resource properties to discover relationships. Apply these patterns:
+The discovery script (Step 3a/3b) already populates a baseline `relationships` array on each resource — parent/child `contains` links plus any relationship it detects by matching ARM resource IDs inside `properties` (see `.github/skills/shared/azure-resource-model.md`). Start from that baseline instead of re-detecting containment and direct ID references from scratch, then use the patterns below to add diagram-specific edge styles and detect relationships the generic ID matching cannot see (connection strings, Key Vault reference syntax, RBAC scope strings, co-location).
 
-| Pattern | Detection | Relationship | Edge Style |
-|---------|-----------|-------------|------------|
-| VNet/Subnet containment | VNet has `subnets` property | Container nesting | — |
-| NIC→VM→Subnet | VM `networkProfile.networkInterfaces` → NIC `ipConfigurations[].subnet.id` | `connects`, place VM in subnet | strokeColor=#0078D4 |
-| Private Endpoint | PE `privateLinkServiceConnections[].privateLinkServiceId` references target | `secures` | strokeColor=#E81123 |
-| Diagnostic Settings | Resource targets Log Analytics/Storage | `depends` | strokeColor=#999999, dashed |
-| Key Vault References | Config contains `@Microsoft.KeyVault(SecretUri=...)` | `secures` | strokeColor=#E81123 |
-| App Service Plan | Web App `serverFarmId` references ASP | `depends` | strokeColor=#999999, dashed |
-| App Insights | App settings contain `APPLICATIONINSIGHTS_CONNECTION_STRING` matching AI resource | `connects` | strokeColor=#0078D4 |
-| Connection Strings | App settings contain SQL/Cosmos/Storage/Redis server names matching discovered resources | `connects` | strokeColor=#0078D4 |
-| Named Connection Strings | `az webapp config connection-string list` entries reference database or storage resources in the same RG | `connects` | strokeColor=#0078D4 |
-| User-Assigned Identity | Web App `userAssignedIdentities` keys contain ARM ID of a discovered managed identity | `secures` | strokeColor=#E81123 |
-| RBAC Role Assignment | Managed identity has role assignments whose `scope` matches a discovered resource's ARM ID | `secures` | strokeColor=#E81123 |
+Analyze enriched resource properties to discover the remaining relationships the baseline cannot see — none of these are direct ARM ID references, so generic ID matching misses them. (Edge styling for the resulting relationship types is defined once in `drawio-diagram-conventions.md` §5 — do not re-specify colors here.)
+
+| Pattern | Detection | Relationship |
+|---------|-----------|-------------|
+| Key Vault References | Config contains `@Microsoft.KeyVault(SecretUri=...)` | `secures` |
+| App Insights | App settings contain `APPLICATIONINSIGHTS_CONNECTION_STRING` matching AI resource | `connects` |
+| Connection Strings | App settings contain SQL/Cosmos/Storage/Redis server names matching discovered resources | `connects` |
+| Named Connection Strings | `az webapp config connection-string list` entries reference database or storage resources in the same RG | `connects` |
+| RBAC Role Assignment | Managed identity has role assignments whose `scope` matches a discovered resource's ARM ID | `secures` |
 
 **Co-located Resource Inference**
 
@@ -240,7 +226,7 @@ After completing explicit relationship detection using the table above, check fo
 1. Count the filtered resources — proceed only if ≤15 resources remain (small, focused resource groups imply intentional co-location).
 2. Identify all Key Vault and Storage Account resources that have no explicit reference detected (no app settings, connection strings, or Key Vault reference patterns among resources in this resource group pointing to them).
 3. Identify all Web App and Function App resources.
-4. For each unmatched pair (Key Vault/Storage ↔ Web App/Function App), add an inferred `connects` edge (strokeColor=#0078D4) and label it `(inferred)` in the relationship output so the user can verify.
+4. For each unmatched pair (Key Vault/Storage ↔ Web App/Function App), add an inferred `connects` edge and label it `(inferred)` in the relationship output so the user can verify.
 
 Resources with no relationships are placed directly inside their resource group container.
 
@@ -276,7 +262,7 @@ Create a solution folder containing the generated diagram and metadata.
 
 **9a. Confirm the solution folder**
 
-The solution folder was created in Step 3d. Save the diagram file here now (see Step 9b).
+The solution folder was created in Step 3e. Save the diagram file here now (see Step 9b).
 
 **9b. Save the diagram**
 
@@ -289,7 +275,7 @@ Document the discovery in `original-request.md` with: source scope, subscription
 
 **9d. Clean up intermediate files**
 
-Delete all intermediate files from the solution folder before you finish — only final deliverables should remain. This includes the temporary resource model JSON file, `resource-list-raw.json`, and any `extract-*.json` files written during discovery. The raw JSON properties from enrichment do not need to be transcribed to `original-request.md`; only the structured tables from Step 9c are required there.
+Delete all intermediate files from the solution folder before you finish — only final deliverables should remain. This includes `resource-model.json` (written in Step 3a/3b), any filtered copy written in Step 4, and any `extract-*.json` files written during enrichment. The raw JSON properties from enrichment do not need to be transcribed to `original-request.md`; only the structured tables from Step 9c are required there.
 
 **9e. Present completion (concise)**
 
