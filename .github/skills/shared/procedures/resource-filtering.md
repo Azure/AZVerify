@@ -43,6 +43,6 @@ If `pwsh`/`powershell.exe` or the script cannot run, filter the resource model d
 
 1. Read `.github/skills/shared/data/resource-filter-rules.json`.
 2. For each resource in the input model, exclude it when its `type` matches a rule (exact or wildcard `*`) whose `excludeForDiagram` (mode `diagram`) or `excludeForBicep` (mode `bicep`) is `true`. For a rule value of `"check individually"`, keep the resource but note it for review.
-3. Exclude any resource whose tag keys **all** start with `hidden-`.
+3. Exclude any resource whose tag keys **all** start with `hidden-`, ignoring `hidden-link:` keys first (those mark a relationship to another resource — e.g. an Application Insights link — and do not by themselves indicate the resource is fully Azure-managed). If removing `hidden-link:` keys leaves no tags, do not exclude the resource on this basis.
 4. Exclude any resource matching a caller-supplied `-ExtraExclude` name or type prefix.
 5. Return the surviving resources as the filtered model (same shape as the input).

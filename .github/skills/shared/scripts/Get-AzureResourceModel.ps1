@@ -749,8 +749,16 @@ try {
         $rawSecrets = New-Object System.Collections.Generic.List[string]
         Find-SecretProperty -InputObject $properties -Found $rawSecrets
 
+        $deployableSecrets = New-Object System.Collections.Generic.List[string]
+        Find-SecretProperty -InputObject $deployableProperties -Found $deployableSecrets
+
         $secrets = New-Object System.Collections.Generic.List[string]
-        Find-SecretProperty -InputObject $deployableProperties -Found $secrets
+        foreach ($secretPath in @($rawSecrets) + @($deployableSecrets)) {
+            if (-not $secrets.Contains($secretPath)) {
+                $secrets.Add($secretPath)
+            }
+        }
+
         if ($secrets.Count -gt 0) {
             $modelResource['secrets'] = $secrets.ToArray()
             Write-Diag "Flagged $($secrets.Count) secret-bearing property path(s) on '$($details.name)'."
