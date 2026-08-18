@@ -63,6 +63,7 @@ Scripts under `.github/skills/shared/scripts/` use the resource model above as t
 
 This contract keeps the script pipeline deterministic and chainable across the skills.
 
+
 ## Relationship Types
 
 | Type | Description | Example |

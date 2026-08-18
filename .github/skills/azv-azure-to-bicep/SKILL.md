@@ -3,6 +3,9 @@ name: azv-azure-to-bicep
 description: Reverse-engineer a live Azure scope (resource group or filtered subscription) into deployment-ready, modular Bicep templates with parameter files. Use when the user wants to bring existing Azure infrastructure under Bicep/IaC management.
 license: MIT
 compatibility: Requires an authenticated Azure session (CLI, Az PowerShell, or Azure MCP).
+metadata:
+  version: "1.1"
+  project: AzVerify
 ---
 
 Discover resources in a live Azure scope, extract their full configuration, and generate deployment-ready Bicep templates with modular structure, user-editable parameter files, and dependency documentation for external resources.
@@ -24,14 +27,10 @@ If a capability is unavailable, continue only when the matching shared reference
 
 ## Output Budget Rules
 
-**This skill frequently handles 20-40+ resources. To avoid hitting the LLM response length limit, follow these rules strictly:**
+Follow `.github/skills/shared/procedures/output-budget.md` strictly — this skill frequently handles 20-40+ resources and can hit the LLM response length limit. In addition to the shared rules:
 
-1. **Save data to files, don't print it.** After discovery (Step 3) and property extraction (Step 6), you may write the resource model to a temporary JSON file. Reference the temporary file in subsequent steps.
-2. **Minimize inline tables.** Never print full resource tables with more than 10 rows. Print a count summary and write full tables to `original-request.md`.
-3. **No per-resource progress messages.** During extraction, print a single summary after the batch (e.g., "Extracted 34 resources (3 partial)").
-4. **Batch CLI calls.** Use `az resource list` with `--query` for bulk discovery rather than per-resource MCP calls.
-5. **Build Bicep files directly.** Write generated code to files. Do NOT echo full Bicep/bicepparam content in the response — show only file paths and a summary of what was generated.
-6. **Delete intermediate files.** Intermediate extraction files (`extract-*.json`, `resource-list-raw.json`, and the temporary resource model JSON file) are never deliverables. Keep them available until Step 11 has written the README (it needs the resource counts and extraction stats), then delete them all in Step 12. Never leave the resource model JSON behind after the skill completes.
+- **Build Bicep files directly.** Write generated code to files. Do NOT echo full Bicep/bicepparam content in the response — show only file paths and a summary of what was generated.
+- **Delete intermediate files on the skill's own schedule.** Intermediate extraction files (`extract-*.json`, `resource-list-raw.json`, and the temporary resource model JSON file) are never deliverables. Keep them available until Step 11 has written the README (it needs the resource counts and extraction stats), then delete them all in Step 12. Never leave the resource model JSON behind after the skill completes.
 
 ## Fallback: pwsh Unavailable
 

@@ -129,7 +129,17 @@ function Test-AllTagsHidden {
     )
 
     if (-not $TagKeys -or $TagKeys.Count -eq 0) { return $false }
-    foreach ($key in $TagKeys) {
+
+    # 'hidden-link:' tags are Azure's automatic cross-resource reference annotations
+    # (e.g. added to a Web/Function App when Application Insights is linked, or to an
+    # App Service Plan targeted by autoscale settings). They mark a relationship, not
+    # that the tagged resource itself is auto-created/fully Azure-managed, so they must
+    # not by themselves cause an otherwise untagged primary resource (like a Function
+    # App) to be treated as "fully Azure-managed" and excluded.
+    $meaningfulKeys = @($TagKeys | Where-Object { -not $_.StartsWith('hidden-link:', [System.StringComparison]::InvariantCultureIgnoreCase) })
+    if ($meaningfulKeys.Count -eq 0) { return $false }
+
+    foreach ($key in $meaningfulKeys) {
         if (-not $key.StartsWith('hidden-', [System.StringComparison]::InvariantCultureIgnoreCase)) {
             return $false
         }

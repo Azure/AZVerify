@@ -8,7 +8,8 @@ For per-resource defaults such as SKUs, sizes, and service settings, derive valu
 
 ## Property Mapping Source of Truth
 
-The full Azure Property Retrieval Mapping now lives in [`shared/data/azure-property-paths.json`](data/azure-property-paths.json).
+
+The full Azure Property Retrieval Mapping lives in [`data/azure-property-paths.json`](data/azure-property-paths.json).
 
 Use that JSON file, not this markdown file, when a skill or script needs to:
 
@@ -37,9 +38,9 @@ If you need script usage details, refer to the script contracts under `.github/s
 
 ### Script/pwsh Unavailable — MCP Fallback
 
-If `pwsh`/`powershell.exe` or `Get-AzureResourceModel.ps1` cannot be executed (tool unavailable, binary not on PATH, or any invocation error), build the resource model directly through Azure MCP instead of stopping:
+`Get-AzureResourceModel.ps1` discovers resources through Azure CLI (`az`) or, when `az` is not on PATH, through an authenticated Az PowerShell session (`Get-AzResource`) — either is sufficient, so this fallback only applies when `pwsh`/`powershell.exe` itself is unavailable, or when the script still fails after that (no `az` CLI, no authenticated Az PowerShell session, or any other invocation error). In that case, build the resource model directly through Azure MCP instead of stopping:
 
-1. **List resources** — call `mcp_azure_group_resource_list` (scoped to the target resource group or subscription) to enumerate resources. This substitutes for the script's `az resource list` discovery.
+1. **List resources** — call `mcp_azure_group_resource_list` (scoped to the target resource group or subscription) to enumerate resources. This substitutes for the script's `az resource list`/`Get-AzResource` discovery.
 2. **Enrich each resource** — for every resource, load its `resourceTypes[]` entry from `shared/data/azure-property-paths.json`. Prefer the entry's `mcpTool` to fetch the resource; if none is available, use the resource-type-specific Azure MCP tool (for example `mcp_azure_storage`, `mcp_azure_keyvault`, `mcp_azure_sql`) or fall back to `az resource show`.
 3. **Extract tracked properties** — apply the ARM JSON paths in each `properties[]` mapping, plus `globalSkuRules[]` and `compositeRules[]`, to populate the tracked values by hand. This mirrors exactly what the script's `-Enrich` mode does.
 4. **Assemble the model** — emit the same resource model shape the script produces, then continue with deep drift comparison as usual.
@@ -48,11 +49,12 @@ If `pwsh`/`powershell.exe` or `Get-AzureResourceModel.ps1` cannot be executed (t
 ```text
 ## Prerequisites Required
 
-This step requires either:
+This step requires one of:
 - PowerShell 5.1 (powershell.exe) or higher (`pwsh`) with Azure CLI (az) on PATH, OR
+- PowerShell 5.1 (powershell.exe) or higher (`pwsh`) with an authenticated Az PowerShell session (Connect-AzAccount) and the Az.Resources module installed, OR
 - The Azure MCP server available and connected
 
-Neither was available. Please install one of the above and try again.
+None of the above was available. Please install/authenticate one of the above and try again.
 ```
 
 > **Note**: The MCP fallback yields the same resource model as the script because both draw tracked property names, extraction paths, and severity metadata from `shared/data/azure-property-paths.json`. Only the retrieval mechanism differs.

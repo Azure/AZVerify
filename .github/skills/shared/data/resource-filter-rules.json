@@ -97,7 +97,7 @@
   "tagRules": [
     {
       "name": "hidden-tag-prefix",
-      "match": "all tag keys start with hidden-",
+      "match": "all tag keys start with hidden- (hidden-link: keys are ignored when deciding this; they only denote a relationship to another resource, e.g. an Application Insights link on a Web/Function App, not that the tagged resource is auto-created)",
       "excludeForDiagram": true,
       "excludeForBicep": true,
       "rationale": "Fully Azure-managed"
