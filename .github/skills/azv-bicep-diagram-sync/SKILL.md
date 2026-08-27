@@ -2,18 +2,18 @@
 name: azv-bicep-diagram-sync
 description: Compare Bicep templates against a Draw.io Azure architecture diagram to detect resource-level divergence. Reports differences and offers resolution — update Bicep to match the diagram, update the diagram to match Bicep, or selectively resolve per resource.
 license: MIT
-compatibility: Prefers PowerShell 7 (pwsh) and Azure CLI (az) with Bicep CLI support; falls back to inline parsing and the Draw.io MCP when unavailable. No live Azure session required.
+compatibility: Requires an authenticated Azure session (CLI, Az PowerShell, or Azure MCP).
 metadata:
-  author: AzVerify
-  version: "1.0"
+  version: "1.1"
   project: AzVerify
 ---
 
 Compare Bicep templates in a solution folder against their source Draw.io diagram and resolve divergence.
 
-**Input**: A solution folder containing Bicep templates (`main.bicep`, `modules/*.bicep`) and a Draw.io diagram file (`.drawio` or `.drawio.xml`). The user can specify the folder and diagram file, or the skill will auto-discover them.
+**Input**: Bicep templates (`main.bicep`, `modules/*.bicep`), optionally a bicep parameter file (`*.bicepparam`), or a folder with the bicep files in them, and a Draw.io diagram file (`.drawio` or `.drawio.xml`). The user can specify the folder, the bicep files and diagram file, or the skill will auto-discover them.
 
-**Tools required**: File system tools (read/write files), Draw.io MCP — attempt `mcp_drawio_create_diagram` first; if the tool is not found, fall back to `mcp_draw_io_create_diagram`. If neither is available, report: "Draw.io MCP tool not found. Ensure the MCP server is running and retry." and stop. Bicep MCP server (for best-practice validation when regenerating Bicep)
+**Tools required**: File system tools (read/write files), Terminal (for running `az` CLI commands and PowerShell 7 / `pwsh` shared scripts), Bicep Schema MCP (`azure-bicepschema`), and Draw.io MCP — attempt `mcp_drawio_create_diagram` first; if the tool is not found, fall back to `mcp_draw_io_create_diagram`. If neither is available, follow the raw XML editing fallback in `.github/skills/shared/procedures/diagram-parsing.md`.
+
 
 **Reference files**:
 - `.github/skills/shared/azure-resource-model.md` — Shared resource metadata model definition
@@ -41,7 +41,14 @@ Identify the solution folder, the Bicep templates, and the Draw.io diagram to co
 - Verify the folder exists
 - Use it as the solution folder
 
-**If no folder is specified:**
+**If the user specifies one or more `.bicep` or `.bicepparam` files, but no folder path:**
+- Verify every specified file exists and has a `.bicep` or `.bicepparam` extension
+- For each `.bicepparam` file, read its `using` declaration and resolve the referenced local `.bicep` path relative to the parameter file. Verify the referenced file exists. If `using none` is declared, ask the user to specify the Bicep entry-point file.
+- Select the Bicep entry point in this order: the file referenced by a specified `.bicepparam` file; a specified file named `main.bicep`; the only specified `.bicep` file
+- If the supplied files resolve to different entry points, or multiple `.bicep` files remain without a clear entry point, present the candidates and ask the user to select one
+- Use the directory containing the selected Bicep entry point as the solution folder, and retain the explicitly specified files for Steps 1c and 3
+
+**If no folder, `.bicep` file, or `.bicepparam` file is specified:**
 - Use the current workspace directory
 - Search immediate subdirectories of the workspace root (depth = 1) for folders containing both a `.drawio` file and a `main.bicep` file. Do not recurse deeper than one level.
 - If exactly one such folder is found, use it (announce which folder)
@@ -67,30 +74,42 @@ This skill requires a Draw.io diagram to compare against the Bicep templates.
 ```
 - Stop execution
 
-#### 1c. Identify the Bicep Templates
-
-- Search the solution folder for `main.bicep`
-- If found, also scan for `modules/*.bicep` files
-- If `main.bicep` is not found, report an error:
-```
-## No Bicep Templates Found
-
-No `main.bicep` file found in the solution folder `<folder-path>`.
-This skill requires Bicep templates to compare against the diagram.
-```
-- Stop execution
-
 ### 2. Parse Diagram into Resource Model
 
-Run `pwsh .github/skills/shared/scripts/ConvertFrom-DrawioDiagram.ps1 -DiagramPath <diagram-file>` — see `.github/skills/shared/procedures/diagram-parsing.md` for the script contract. Capture the JSON output and use it as the diagram resource model for the remaining steps. *(If pwsh or the script is unavailable, follow the inline fallback in the procedure doc above.)* If the script exits with a non-zero code or produces output that is not valid JSON, display the raw script output and stop with: "Script execution failed. Review the output above and re-run once the issue is resolved."
+Run `pwsh .github/skills/shared/scripts/ConvertFrom-DrawioDiagram.ps1 -DiagramPath <diagram-file>` — see `.github/skills/shared/procedures/diagram-parsing.md` for the script contract. Capture the JSON output and use it as the diagram resource model for the remaining steps. *(If pwsh or the script is unavailable, follow the inline fallback in the procedure doc above.)* If the script exits with a non-zero code or produces output that is not valid JSON, use the fallback method in the script contract and output: "Script execution failed. Please review the script file. Using fallback method now."
 
+If there are less than 20 resources:
 Display the parsed resource model as a table with columns: #, Resource, Type, Container.
+
+If there are more than 20 resources:
+- Display the amount of resources parsed and continue.
 
 ### 3. Parse Bicep Templates into Resource Model
 
-**Identify the parameter file:** Search the solution folder for `*.bicepparam` files. If exactly one is found, use it as `<selected-param-file>`. If multiple are found, present the list and ask the user to select one. If none are found, omit the `-ParamFile` argument from the script call.
+Use the Bicep entry point selected in Step 1a as `<selected-bicep-file>`. For folder or auto-discovered input, use `<solution-folder>/main.bicep`; verify it exists before continuing.
 
-Run `pwsh .github/skills/shared/scripts/ConvertFrom-BicepTemplate.ps1 -BicepFile <solution-folder>/main.bicep -ParamFile <selected-param-file> -Depth standard` — see `.github/skills/shared/procedures/bicep-parsing.md` for the script contract. Capture the JSON output and use it as the Bicep resource model for the remaining steps. *(If pwsh or the script is unavailable, follow the inline fallback in the procedure doc above.)* If the script exits with a non-zero code or produces output that is not valid JSON, display the raw script output and stop with: "Script execution failed. Review the output above and re-run once the issue is resolved."
+**If Step 1a retained an explicitly specified `.bicepparam` file:**
+- Use it as `<selected-param-file>` and read its contents
+
+**If no parameter file was specified:**
+- Search the solution folder for `*.bicepparam` files that reference `<selected-bicep-file>` in their `using` declaration
+- If exactly one is found, use it as `<selected-param-file>` (announce which file)
+- If multiple are found, present the list and ask the user to select one
+- If none are found, continue without a parameter file
+
+When a parameter file is selected, verify its `using` declaration resolves to `<selected-bicep-file>`. If it targets a different template or declares `using none`, report the mismatch and ask the user to select a compatible parameter file or continue without one.
+
+Run the applicable command:
+
+```powershell
+# With a selected parameter file
+pwsh .github/skills/shared/scripts/ConvertFrom-BicepTemplate.ps1 -BicepFile <selected-bicep-file> -ParamFile <selected-param-file> -Depth standard
+
+# Without a parameter file
+pwsh .github/skills/shared/scripts/ConvertFrom-BicepTemplate.ps1 -BicepFile <selected-bicep-file> -Depth standard
+```
+
+See `.github/skills/shared/procedures/bicep-parsing.md` for the script contract. Capture the JSON output and use it as the Bicep resource model for the remaining steps. *(If pwsh or the script is unavailable, follow the inline fallback in the procedure doc above.)* If the script exits with a non-zero code or produces output that is not valid JSON, use the fallback method in the script contract and output: "Script execution failed. Please review the script file. Using fallback method now."
 
 Display the parsed Bicep resource model as a table with columns: #, Resource, Type, Source File, Notes.
 
@@ -260,6 +279,8 @@ Proceed? (yes/no)
 Wait for explicit confirmation. If the user says no, return to Step 6. Alternatively, if the user says "no" and explains they want to exclude specific resources, treat this as a Selective resolution (Step 9) pre-filtered to only the resources from the bulk list.
 
 **8b. Generate updated diagram**
+
+If neither Draw.io MCP tool is available, use the raw XML editing fallback in `.github/skills/shared/procedures/diagram-parsing.md` to update the diagram file on disk.
 
 1. Load the existing diagram XML
 2. For **Bicep-only resources** (add to diagram):

@@ -3,6 +3,9 @@ name: azv-azure-to-diagram
 description: Reverse-engineer a live Azure scope (resource group or filtered subscription) into a professional Draw.io architecture diagram following established AzVerify conventions. Use when the user wants to visualize or document existing Azure infrastructure as a diagram.
 license: MIT
 compatibility: Requires an authenticated Azure session (CLI, Az PowerShell, or Azure MCP).
+metadata:
+  version: "1.1"
+  project: AzVerify
 ---
 
 Discover resources in a live Azure scope and generate a Draw.io architecture diagram with proper container hierarchy, verified icons, and inferred relationships.
