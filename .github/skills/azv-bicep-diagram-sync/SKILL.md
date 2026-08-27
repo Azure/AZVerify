@@ -78,10 +78,10 @@ This skill requires a Draw.io diagram to compare against the Bicep templates.
 
 Run `pwsh .github/skills/shared/scripts/ConvertFrom-DrawioDiagram.ps1 -DiagramPath <diagram-file>` — see `.github/skills/shared/procedures/diagram-parsing.md` for the script contract. Capture the JSON output and use it as the diagram resource model for the remaining steps. *(If pwsh or the script is unavailable, follow the inline fallback in the procedure doc above.)* If the script exits with a non-zero code or produces output that is not valid JSON, use the fallback method in the script contract and output: "Script execution failed. Please review the script file. Using fallback method now."
 
-If there are less than 20 resources:
+If there are fewer than 20 resources:
 Display the parsed resource model as a table with columns: #, Resource, Type, Container.
 
-If there are more than 20 resources:
+If there are 20 or more resources:
 - Display the amount of resources parsed and continue.
 
 ### 3. Parse Bicep Templates into Resource Model
@@ -234,6 +234,7 @@ For **Bicep-only resources** (remove from Bicep):
 3. Remove associated parameters from `main.bicep` and the `.bicepparam` file
 4. Remove module references in `main.bicep` if the module file is now empty
 5. Remove empty module files
+6. If `main.bicep` would have no remaining resource or module declarations after removals, warn the user: "Removing these resources would leave main.bicep empty. Confirm you want to proceed or use Selective mode to retain some resources.", and halt until the user confirms.
 
 **7d. Present result**
 
@@ -325,7 +326,7 @@ This resource exists in the diagram but not in the Bicep templates.
 Choice? (1/2/3)
 ```
 
-Apply the user's choice for each resource following the same logic as Steps 7 and 8. In selective mode, skip the bulk confirmation steps (7a / 8a). Apply each resource's chosen action immediately after the user responds. Batch all file writes and diagram changes; do not write files until all per-resource choices have been collected. Then apply all changes at once and present the summary table.
+Collect the user's choice for each resource following the same logic as Steps 7 and 8. In selective mode, skip the bulk confirmation steps (7a / 8a). Do not write files while collecting per-resource choices. When adding a resource to Bicep during selective resolution, run the deployment verification checks from Step 7b for that resource before generating the Bicep block. After all per-resource choices have been collected and verified, batch all file writes and diagram changes, apply them at once, and present the summary table.
 
 After all resources are resolved, present a summary:
 
