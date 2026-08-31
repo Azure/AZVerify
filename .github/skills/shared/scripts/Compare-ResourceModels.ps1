@@ -13,6 +13,13 @@ Path to the second resource model JSON.
 Label for the first model in the output report. Defaults to 'ModelA'.
 .PARAMETER LabelB
 Label for the second model in the output report. Defaults to 'ModelB'.
+.PARAMETER CompareProperties
+When set, matched resource pairs are also compared property-by-property. Model A is
+treated as the expected state: every property in a matched A resource is compared
+against the B resource using normalization rules (case-insensitive enums, boolean
+coercion, empty-collection equivalence, numeric strings, region names). Drifted
+properties are tagged with the severity classification from
+shared/data/azure-property-paths.json.
 .PARAMETER OutFile
 Optional path to write the JSON comparison report. If omitted, output is written to stdout.
 .OUTPUTS
@@ -23,6 +30,8 @@ This script is intended for diagram/Bicep/Azure resource model comparisons.
 pwsh Compare-ResourceModels.ps1 -ModelA diagram.json -ModelB bicep.json
 .EXAMPLE
 pwsh Compare-ResourceModels.ps1 -ModelA diagram.json -ModelB live.json -LabelA Diagram -LabelB Azure -OutFile report.json
+.EXAMPLE
+pwsh Compare-ResourceModels.ps1 -ModelA bicep.json -ModelB azure.json -LabelA Bicep -LabelB Azure -CompareProperties
 #>
 [CmdletBinding()]
 param(
@@ -37,6 +46,9 @@ param(
 
     [Parameter()]
     [string]$LabelB = 'ModelB',
+
+    [Parameter()]
+    [switch]$CompareProperties,
 
     [Parameter()]
     [string]$OutFile
@@ -131,7 +143,204 @@ function New-ResourceRecord {
     }
 }
 
+function Test-EmptyValue {
+    [CmdletBinding()]
+    param(
+        [Parameter()]
+        [AllowNull()]
+        $Value
+    )
+
+    if ($null -eq $Value) { return $true }
+    if ($Value -is [string]) { return [string]::IsNullOrWhiteSpace($Value) }
+    if ($Value -is [System.Collections.IDictionary]) { return $Value.Count -eq 0 }
+    if ($Value -is [System.Management.Automation.PSCustomObject]) { return @($Value.PSObject.Properties).Count -eq 0 }
+    if ($Value -is [System.Collections.IEnumerable]) { return @($Value).Count -eq 0 }
+
+    $false
+}
+
+function ConvertTo-NormalizedBoolean {
+    [CmdletBinding()]
+    param(
+        [Parameter()]
+        [AllowNull()]
+        $Value
+    )
+
+    if ($Value -is [bool]) { return $Value }
+    if ($Value -is [string]) {
+        switch (([string]$Value).Trim().ToLowerInvariant()) {
+            'true' { return $true }
+            'false' { return $false }
+        }
+    }
+
+    $null
+}
+
+function ConvertTo-NormalizedNumber {
+    [CmdletBinding()]
+    param(
+        [Parameter()]
+        [AllowNull()]
+        $Value
+    )
+
+    if ($null -eq $Value -or $Value -is [bool]) { return $null }
+    if ($Value -isnot [string] -and $Value -isnot [System.ValueType]) { return $null }
+
+    $parsed = [decimal]0
+    $styles = [System.Globalization.NumberStyles]::Number
+    $culture = [System.Globalization.CultureInfo]::InvariantCulture
+    if ([decimal]::TryParse(([string]$Value).Trim(), $styles, $culture, [ref]$parsed)) {
+        return $parsed
+    }
+
+    $null
+}
+
+function ConvertTo-PropertyMap {
+    [CmdletBinding()]
+    param(
+        [Parameter()]
+        [AllowNull()]
+        $Properties
+    )
+
+    $map = [System.Collections.Generic.Dictionary[string, object]]::new([System.StringComparer]::OrdinalIgnoreCase)
+    if ($null -eq $Properties) { return $map }
+
+    if ($Properties -is [System.Collections.IDictionary]) {
+        foreach ($key in $Properties.Keys) {
+            $map[[string]$key] = $Properties[$key]
+        }
+    }
+    elseif ($Properties -is [System.Management.Automation.PSCustomObject]) {
+        foreach ($property in $Properties.PSObject.Properties) {
+            $map[$property.Name] = $property.Value
+        }
+    }
+
+    # parentId is a matching-context aid, not a deployable property.
+    [void]$map.Remove('parentId')
+    $map
+}
+
+function Test-NormalizedEquality {
+    [CmdletBinding()]
+    param(
+        [Parameter()]
+        [AllowNull()]
+        $Left,
+
+        [Parameter()]
+        [AllowNull()]
+        $Right
+    )
+
+    # Empty-collection equivalence: [], {}, null, '' and absent are all equal.
+    $leftEmpty = Test-EmptyValue -Value $Left
+    $rightEmpty = Test-EmptyValue -Value $Right
+    if ($leftEmpty -or $rightEmpty) { return ($leftEmpty -and $rightEmpty) }
+
+    $leftIsObject = ($Left -is [System.Collections.IDictionary]) -or ($Left -is [System.Management.Automation.PSCustomObject])
+    $rightIsObject = ($Right -is [System.Collections.IDictionary]) -or ($Right -is [System.Management.Automation.PSCustomObject])
+    if ($leftIsObject -or $rightIsObject) {
+        if (-not ($leftIsObject -and $rightIsObject)) { return $false }
+
+        $leftMap = ConvertTo-PropertyMap -Properties $Left
+        $rightMap = ConvertTo-PropertyMap -Properties $Right
+        if ($leftMap.Count -ne $rightMap.Count) { return $false }
+        foreach ($key in $leftMap.Keys) {
+            if (-not $rightMap.ContainsKey($key)) { return $false }
+            if (-not (Test-NormalizedEquality -Left $leftMap[$key] -Right $rightMap[$key])) { return $false }
+        }
+
+        return $true
+    }
+
+    $leftIsCollection = ($Left -is [System.Collections.IEnumerable]) -and ($Left -isnot [string])
+    $rightIsCollection = ($Right -is [System.Collections.IEnumerable]) -and ($Right -isnot [string])
+    if ($leftIsCollection -or $rightIsCollection) {
+        if (-not ($leftIsCollection -and $rightIsCollection)) { return $false }
+
+        $leftItems = @($Left)
+        $rightItems = @($Right)
+        if ($leftItems.Count -ne $rightItems.Count) { return $false }
+        for ($i = 0; $i -lt $leftItems.Count; $i++) {
+            if (-not (Test-NormalizedEquality -Left $leftItems[$i] -Right $rightItems[$i])) { return $false }
+        }
+
+        return $true
+    }
+
+    $leftBool = ConvertTo-NormalizedBoolean -Value $Left
+    $rightBool = ConvertTo-NormalizedBoolean -Value $Right
+    if ($null -ne $leftBool -and $null -ne $rightBool) { return $leftBool -eq $rightBool }
+
+    $leftNumber = ConvertTo-NormalizedNumber -Value $Left
+    $rightNumber = ConvertTo-NormalizedNumber -Value $Right
+    if ($null -ne $leftNumber -and $null -ne $rightNumber) { return $leftNumber -eq $rightNumber }
+
+    $leftText = ([string]$Left).Trim().ToLowerInvariant()
+    $rightText = ([string]$Right).Trim().ToLowerInvariant()
+    if ($leftText -eq $rightText) { return $true }
+
+    # Region-name normalization: 'West Europe' equals 'westeurope'.
+    ($leftText -replace '\s', '') -eq ($rightText -replace '\s', '')
+}
+
+function Get-PropertySeverity {
+    [CmdletBinding()]
+    param(
+        [Parameter()]
+        [string]$ResourceType,
+
+        [Parameter(Mandatory = $true)]
+        [string]$PropertyName,
+
+        [Parameter(Mandatory = $true)]
+        [hashtable]$SeverityIndex
+    )
+
+    $typeKey = if ($ResourceType) { $ResourceType.Trim().ToLowerInvariant() } else { '' }
+    if (-not $SeverityIndex.ContainsKey($typeKey)) { return 'standard' }
+
+    $typeEntry = $SeverityIndex[$typeKey]
+    if ($typeEntry.Properties.ContainsKey($PropertyName)) { return $typeEntry.Properties[$PropertyName] }
+
+    $typeEntry.Default
+}
+
 try {
+    # Severity lookup index from azure-property-paths.json: per-property severity when
+    # declared, otherwise the resource-type default, otherwise 'standard'.
+    $severityIndex = @{}
+    if ($CompareProperties.IsPresent) {
+        $propertyConfigPath = Resolve-Path -Path (Join-Path $PSScriptRoot '../data/azure-property-paths.json') -ErrorAction Stop
+        $propertyConfig = Get-Content -LiteralPath $propertyConfigPath -Raw | ConvertFrom-Json
+
+        foreach ($resourceTypeEntry in $propertyConfig.resourceTypes) {
+            $typeDefault = 'standard'
+            if ($resourceTypeEntry.PSObject.Properties['severity'] -and -not [string]::IsNullOrWhiteSpace([string]$resourceTypeEntry.severity)) {
+                $typeDefault = [string]$resourceTypeEntry.severity
+            }
+
+            $propertySeverities = [System.Collections.Generic.Dictionary[string, string]]::new([System.StringComparer]::OrdinalIgnoreCase)
+            foreach ($propertyEntry in $resourceTypeEntry.properties) {
+                if ($propertyEntry.PSObject.Properties['severity'] -and -not [string]::IsNullOrWhiteSpace([string]$propertyEntry.severity)) {
+                    $propertySeverities[[string]$propertyEntry.name] = [string]$propertyEntry.severity
+                }
+            }
+
+            $severityIndex[([string]$resourceTypeEntry.resourceType).Trim().ToLowerInvariant()] = @{
+                Default    = $typeDefault
+                Properties = $propertySeverities
+            }
+        }
+    }
+
     $baseA = Read-ResourceModel -InputFile $ModelA
     $baseB = Read-ResourceModel -InputFile $ModelB
     $resourcesA = if ($baseA.resources) { @($baseA.resources) } else { @() }
@@ -231,6 +440,41 @@ try {
         $comparisonMatches.Add(@{ status = "$LabelB Only"; resourceA = $null; resourceB = $rb.Resource; note = 'Present only in second model' })
     }
 
+    if ($CompareProperties.IsPresent) {
+        # Model A is the expected state: compare each of its properties against B's value.
+        # Keys only present in B are ignored (the expected model did not specify them).
+        foreach ($entry in $comparisonMatches) {
+            if ($entry.status -ne 'In Sync' -and $entry.status -ne 'In Sync (name differs)') { continue }
+
+            $propertiesA = if ($entry.resourceA.PSObject.Properties['properties']) { $entry.resourceA.properties } else { $null }
+            $propertiesB = if ($entry.resourceB.PSObject.Properties['properties']) { $entry.resourceB.properties } else { $null }
+            $mapA = ConvertTo-PropertyMap -Properties $propertiesA
+            $mapB = ConvertTo-PropertyMap -Properties $propertiesB
+
+            $drifts = [System.Collections.Generic.List[object]]::new()
+            foreach ($propertyName in $mapA.Keys) {
+                $valueA = $mapA[$propertyName]
+                $valueB = if ($mapB.ContainsKey($propertyName)) { $mapB[$propertyName] } else { $null }
+
+                if (-not (Test-NormalizedEquality -Left $valueA -Right $valueB)) {
+                    $drifts.Add(@{
+                        property = $propertyName
+                        valueA   = $valueA
+                        valueB   = $valueB
+                        severity = Get-PropertySeverity -ResourceType ([string]$entry.resourceA.type) -PropertyName $propertyName -SeverityIndex $severityIndex
+                    })
+                }
+            }
+
+            $entry.propertyComparison = @{
+                status        = if ($mapA.Count -eq 0) { 'No Comparable Properties' } elseif ($drifts.Count -eq 0) { 'All Properties Match' } else { 'Properties Drifted' }
+                comparedCount = $mapA.Count
+                driftCount    = $drifts.Count
+                drifts        = @($drifts)
+            }
+        }
+    }
+
     $summary = @{
         total          = $comparisonMatches.Count
         inSync         = 0
@@ -245,6 +489,17 @@ try {
             'In Sync (name differs)' { $summary.inSyncNameDiff++ }
             "$LabelA Only" { $summary.onlyA++ }
             "$LabelB Only" { $summary.onlyB++ }
+        }
+    }
+
+    if ($CompareProperties.IsPresent) {
+        $summary.resourcesWithPropertyDrift = 0
+        $summary.propertyDriftCount = 0
+        foreach ($entry in $comparisonMatches) {
+            if ($entry.ContainsKey('propertyComparison') -and $entry.propertyComparison.driftCount -gt 0) {
+                $summary.resourcesWithPropertyDrift++
+                $summary.propertyDriftCount += $entry.propertyComparison.driftCount
+            }
         }
     }
 
