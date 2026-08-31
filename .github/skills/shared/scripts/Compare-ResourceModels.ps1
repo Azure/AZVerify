@@ -222,8 +222,9 @@ function ConvertTo-PropertyMap {
         }
     }
 
-    # parentId is a matching-context aid, not a deployable property.
+    # parentId and containerName are matching-context aids, not deployable properties.
     [void]$map.Remove('parentId')
+    [void]$map.Remove('containerName')
     $map
 }
 

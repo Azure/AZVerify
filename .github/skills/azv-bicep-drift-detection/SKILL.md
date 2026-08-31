@@ -43,7 +43,7 @@ Compare Bicep templates in a solution folder against either their source Draw.io
 
 Follow `.github/skills/shared/procedures/output-budget.md` strictly. In addition:
 
-- Keep all resource models in temporary JSON files (`bicep-model.json`, `diagram-model.json` or `azure-model.json`, `match-report.json`) in a working directory inside the solution folder, and reference them by path between steps instead of echoing their contents.
+- Keep all resource models in temporary JSON files (`bicep-model-raw.json`, `bicep-model.json`, `diagram-model.json` or `azure-model.json`, `match-report.json`) in a working directory inside the solution folder, and reference them by path between steps instead of echoing their contents.
 - Never echo generated Bicep or Draw.io XML in the response — show file paths and a change summary only.
 - Delete the intermediate JSON files once the drift report has been presented and any chosen resolution has been applied.
 
@@ -55,9 +55,9 @@ If `pwsh`/`powershell.exe` or a shared script cannot be executed, use the inline
 |------|-----------------|
 | 2 — Auth check (Azure mode) | `.github/skills/shared/procedures/azure-authentication.md` |
 | 3 — Bicep parsing | `.github/skills/shared/procedures/bicep-parsing.md` |
+| 4, 6 — Filtering | `.github/skills/shared/procedures/resource-filtering.md` |
 | 5 — Diagram parsing | `.github/skills/shared/procedures/diagram-parsing.md` |
 | 6 — Azure discovery and enrichment | `.github/skills/shared/procedures/azure-discovery.md` |
-| 6 — Filtering | `.github/skills/shared/procedures/resource-filtering.md` |
 | 7 — Comparison | `.github/skills/shared/procedures/resource-matching.md` |
 
 Announce the fallback once: "Script execution failed. Please review the script file. Using fallback method now."
@@ -128,21 +128,33 @@ When a parameter file is selected, verify its `using` declaration resolves to `<
 
 ### 4. Parse Bicep Templates into the Expected Resource Model
 
+#### 4a. Parse the Templates
+
 Run the applicable command — see `.github/skills/shared/procedures/bicep-parsing.md` for the script contract:
 
 ```powershell
 # With a selected parameter file
-pwsh .github/skills/shared/scripts/ConvertFrom-BicepTemplate.ps1 -BicepFile <selected-bicep-file> -ParamFile <selected-param-file> -Depth standard -OutFile <work-dir>/bicep-model.json
+pwsh .github/skills/shared/scripts/ConvertFrom-BicepTemplate.ps1 -BicepFile <selected-bicep-file> -ParamFile <selected-param-file> -Depth standard -OutFile <work-dir>/bicep-model-raw.json
 
 # Without a parameter file
-pwsh .github/skills/shared/scripts/ConvertFrom-BicepTemplate.ps1 -BicepFile <selected-bicep-file> -Depth standard -OutFile <work-dir>/bicep-model.json
+pwsh .github/skills/shared/scripts/ConvertFrom-BicepTemplate.ps1 -BicepFile <selected-bicep-file> -Depth standard -OutFile <work-dir>/bicep-model-raw.json
 ```
 
 The emitted model is the **expected** state: resource types, parameter-resolved names, tracked property values, and relationships across `main.bicep` and its modules. Where a tracked property resolves to a parameter with no value in the parameter file, fall back to the default in `azure-property-paths.json`.
 
 If the script exits non-zero or produces output that is not valid JSON, use the fallback method in the contract.
 
-Report the parsed resource count. Display the model as a table (columns: #, Resource, Type, Source File, Key Properties) only when it stays within the output thresholds in `output-budget.md`.
+#### 4b. Filter the Expected Model
+
+The parsed model includes deployment scaffolding — module `Microsoft.Resources/deployments` entries and `Microsoft.Authorization/*` role assignments — that exists in neither a diagram nor the discovered Azure model, and would otherwise be reported as false drift. Apply the shared exclusion rules — see `.github/skills/shared/procedures/resource-filtering.md` for the script contract:
+
+```powershell
+pwsh .github/skills/shared/scripts/Select-AzureResources.ps1 -InputFile <work-dir>/bicep-model-raw.json -Mode bicep -OutFile <work-dir>/bicep-model.json
+```
+
+Use `<work-dir>/bicep-model.json` as the expected model for the rest of the workflow. Report how many resources were excluded as a single line; do not list them individually.
+
+Report the resulting resource count. Display the model as a table (columns: #, Resource, Type, Source File, Key Properties) only when it stays within the output thresholds in `output-budget.md`.
 
 ### 5. Diagram Mode: Parse the Diagram
 

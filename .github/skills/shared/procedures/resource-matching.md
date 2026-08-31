@@ -52,7 +52,7 @@ and the summary gains `resourcesWithPropertyDrift` and `propertyDriftCount` coun
 ## Notes
 
 - The script applies exact match, single-of-type match, substring/Levenshtein matching, child-resource context, and conditional-resource annotations.
-- **Property comparison semantics** (`-CompareProperties`): every property in a matched model-A resource is compared against the model-B value (keys only present in B are ignored — the expected model did not specify them; `parentId` is excluded as a matching aid). Values are normalized before comparing:
+- **Property comparison semantics** (`-CompareProperties`): every property in a matched model-A resource is compared against the model-B value (keys only present in B are ignored — the expected model did not specify them; `parentId` and `containerName` are excluded as matching aids). Values are normalized before comparing:
   - Case-insensitive string comparison (SKU names, tiers, enums)
   - Boolean coercion: `true`/`"true"`/`"True"` are equal
   - Empty-collection equivalence: `[]`, `{}`, `null`, `""`, and absent are all equal
