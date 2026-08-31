@@ -67,6 +67,5 @@ Set these before deploying:
 1. **Edit `resourcegroup01-drawing.bicepparam`** to set real values — each parameter has comments explaining alternatives and cost impact.
 2. **Set environment variables** (`VM_ADMIN_PASSWORD`, optionally `DEPLOY_SUFFIX`) before deploying.
 3. **Validate before deploying** with related skills:
-   - `azv-bicep-whatif` — preview changes against a live Azure environment
-   - `azv-bicep-diagram-sync` — compare Bicep against the source diagram for drift
+   - `azv-bicep-drift-detection` — compare Bicep against the source diagram or a live Azure environment
    - `azv-bicep-policy-check` — check compliance with Azure Policy assignments

@@ -300,7 +300,7 @@ Show: Policy name, Effect (deployIfNotExists), note that no Bicep changes are re
 Offer the user:
 - **`fix`** — Update Bicep templates to resolve non-compliant settings AND proactively set modify-policy values
 - **`save report`** — Save compliance report as `policy-compliance-report.md` in the solution folder
-- **Deploy anyway** / **Re-check** / **Preview with azv-bicep-whatif**
+- **Deploy anyway** / **Re-check** / **Preview with azv-bicep-drift-detection**
 
 #### 7a. Fix non-compliant and modify-policy Bicep templates (if requested)
 

@@ -182,7 +182,7 @@ Before generating the diagram, create a dedicated solution folder in the workspa
      ```
    - **If both** an image and a text description were provided, save both files.
 
-This folder will also be used by later skills (diagram-to-bicep, diagram-azure-sync) to store Bicep templates, configuration manifests, and other generated artifacts alongside the diagram.
+This folder will also be used by later skills (diagram-to-bicep, diagram-drift-detection) to store Bicep templates, configuration manifests, and other generated artifacts alongside the diagram.
 
 ### 6. Generate the Draw.io Diagram
 
@@ -250,14 +250,14 @@ When the user confirms:
 Diagram finalized and saved in the `<solution-folder>/` folder.
 
 You can use this folder with the **azv-diagram-to-bicep** skill to generate Bicep templates, 
-or with **azv-diagram-azure-sync** to compare it against a live Azure environment.
+or with **azv-diagram-drift-detection** to compare it against a live Azure environment.
 ```
 
 ---
 
 ## Important Notes
 
-- This skill operates **independently** — it does not require diagram-to-bicep or diagram-azure-sync.
+- This skill operates **independently** — it does not require diagram-to-bicep or diagram-drift-detection.
 - Do NOT ask about deployment settings (SKUs, tiers, scaling). Those are handled by the configuration manifest in diagram-to-bicep.
 - Always use the Draw.io MCP for diagram creation — never output raw XML for the user to manually save.
 - Follow all diagram construction rules in `.github/skills/shared/drawio-diagram-conventions.md` — stencil lookup, icon paths, layout patterns, and anti-patterns are all documented there.

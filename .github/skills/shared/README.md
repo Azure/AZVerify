@@ -1,6 +1,6 @@
 # AzVerify shared skill architecture
 
-This folder contains the shared contracts, reference data, procedures, and scripts used by the nine AzVerify skills.
+This folder contains the shared contracts, reference data, procedures, and scripts used by the seven AzVerify skills.
 
 ## Folder layout
 
@@ -56,10 +56,25 @@ This contract lets one parser feed multiple downstream skills. For example, a di
 | File | Used by | Notes |
 |---|---|---|
 | `data/resource-filter-rules.json` | `Select-AzureResources.ps1` and filtering procedures | Encodes diagram vs Bicep inclusion rules. |
-| `data/azure-property-paths.json` | `Get-AzureResourceModel.ps1`, deep sync skills | Maps resource types to property paths, MCP hints, CLI fallbacks, and composite extraction rules. |
+| `data/azure-property-paths.json` | `Get-AzureResourceModel.ps1`, `Compare-ResourceModels.ps1 -CompareProperties`, drift-detection skills | Maps resource types to property paths, MCP hints, CLI fallbacks, composite extraction rules, and severity classifications. |
 | `data/arm-readonly-properties.json` | `Get-AzureResourceModel.ps1` (`-StripReadOnly`) | Read-only/ARM-internal properties to strip before Bicep generation, plus secret-bearing property patterns. |
 
 Keep these files machine-readable and stable. Skills should reference them through scripts or procedure docs rather than re-embedding the tables inline.
+
+## Procedures
+
+| File | Purpose |
+|---|---|
+| `procedures/azure-authentication.md` | Contract for `Test-AzureAuth.ps1` plus the Azure MCP fallback and sign-in instructions. |
+| `procedures/azure-discovery.md` | Contract for `Get-AzureResourceModel.ps1` — live discovery, property enrichment, and inline fallback. |
+| `procedures/diagram-parsing.md` | Contract for `ConvertFrom-DrawioDiagram.ps1` and the manual XML parsing fallback. |
+| `procedures/bicep-parsing.md` | Contract for `ConvertFrom-BicepTemplate.ps1` and the manual template reading fallback. |
+| `procedures/resource-filtering.md` | Contract for `Select-AzureResources.ps1` (`-Mode diagram` / `-Mode bicep`). |
+| `procedures/resource-matching.md` | Contract for `Compare-ResourceModels.ps1`, including `-CompareProperties` normalization and severity rules. |
+| `procedures/resolution-update-bicep.md` | "Update Bicep" resolution flow used by the drift-detection skills. |
+| `procedures/resolution-update-diagram.md` | "Update Diagram" resolution flow used by the drift-detection skills. |
+| `procedures/resolution-update-azure.md` | "Update Azure" and per-property drift resolution flows. |
+| `procedures/output-budget.md` | Report sizing and response-length rules. |
 
 ## Scripts
 

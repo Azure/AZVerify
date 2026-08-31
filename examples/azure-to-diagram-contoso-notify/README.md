@@ -73,4 +73,4 @@ New-AzResourceGroupDeployment `
 2. **Azure AI Foundry** — Assign `Cognitive Services OpenAI User` role to `contoso-notify-uami` (`dependencies/README.md` §2)
 3. **DNS verification** — Add DNS records for `<DOMAIN>` and run `initiate-verification` (`dependencies/README.md` §3), then update `senderEmail` to `donotreply@<DOMAIN>`
 4. **Populate Key Vault secrets** — Add `AcsConnectionString` and `ExternalApiToken` secrets to `<KV_NAME>` vault manually after deployment
-5. **Related skills**: Run `/azv-bicep-whatif` to compare this template against live Azure, or `/azv-bicep-policy-check` to validate against Azure Policy
+5. **Related skills**: Run `/azv-bicep-drift-detection` to compare this template against live Azure, or `/azv-bicep-policy-check` to validate against Azure Policy

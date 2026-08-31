@@ -60,21 +60,37 @@ Generate Bicep templates from an existing Draw.io diagram.
 
 ## Detect and Resolve Drift
 
-### Bicep-Diagram Sync
+### Bicep Drift Detection (against a diagram)
 
 Compare Bicep templates against their source diagram. Finds divergence and offers resolution.
 
 ```text
-/azv-bicep-diagram-sync `<path-to-diagram>.drawio`,
+/azv-bicep-drift-detection `<path-to-diagram>.drawio`,
 bicep root `<path-to-bicep-folder>/`
 ```
 
-### Diagram-Azure Sync
+### Bicep Drift Detection (against live Azure)
 
-Compare a Draw.io diagram against a live Azure environment.
+Compare Bicep templates against what is actually deployed — existence and configuration properties.
 
 ```text
-/azv-diagram-azure-sync `<path-to-diagram>.drawio`,
+/azv-bicep-drift-detection `<path-to-bicep-folder>/`,
+Resource Group `<your-resource-group>`,
+Subscription `<your-subscription-id>`
+```
+
+### Diagram Drift Detection
+
+Compare a Draw.io diagram against a live Azure environment. Add `deep` for property-level comparison.
+
+```text
+/azv-diagram-drift-detection `<path-to-diagram>.drawio`,
+Resource Group `<your-resource-group>`,
+Subscription `<your-subscription-id>`
+```
+
+```text
+/azv-diagram-drift-detection deep `<path-to-diagram>.drawio`,
 Resource Group `<your-resource-group>`,
 Subscription `<your-subscription-id>`
 ```
@@ -82,16 +98,6 @@ Subscription `<your-subscription-id>`
 ---
 
 ## Validate Before Deploying
-
-### Bicep What-If
-
-Preview what would change if you deployed your Bicep templates — without actually deploying.
-
-```text
-/azv-bicep-whatif  `<path-to-bicep-folder>/`,
-Resource Group `<your-resource-group>`,
-Subscription `<your-subscription-id>`
-```
 
 ### Bicep Policy Check
 
@@ -114,11 +120,11 @@ The [examples/](../examples/) folder contains complete skill outputs you can use
 /azv-diagram-to-bicep `examples/contoso-voting/contoso-voting.drawio`
 
 # Sync the Contoso-Notify diagram against its Bicep
-/azv-bicep-diagram-sync `examples/contoso-notify/Contoso-Notify.drawio`,
+/azv-bicep-drift-detection `examples/contoso-notify/Contoso-Notify.drawio`,
 bicep root `examples/contoso-notify/`
 
-# Run what-if against a live environment using the securewebapp Bicep
-/azv-bicep-whatif `examples/securewebapp/`,
+# Compare the securewebapp Bicep against a live environment
+/azv-bicep-drift-detection `examples/securewebapp/`,
 Resource Group `<your-resource-group>`,
 Subscription `<your-subscription-id>`
 ```

@@ -123,6 +123,6 @@ New-AzResourceGroupDeployment `
 
 1. **External dependencies**: See [`dependencies/README.md`](dependencies/README.md) for the Log Analytics workspace setup.
 2. **Post-deploy RBAC**: The managed identity `deploy-uami` has Website Contributor on the App Service — this is recreated by `modules/identity.bicep`.
-3. **What-If analysis**: Run `/azv-bicep-whatif` to compare this Bicep against the live environment before deploying.
+3. **Drift detection**: Run `/azv-bicep-drift-detection` to compare this Bicep against the live environment before deploying.
 4. **Policy compliance**: Run `/azv-bicep-policy-check` to validate compliance before deploying.
 5. **Architecture diagram**: Run `/azv-azure-to-diagram` to generate an architecture diagram if needed.

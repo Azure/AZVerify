@@ -302,7 +302,7 @@ Write a `README.md` to the output root directory (alongside `main.bicep`) contai
 - **Resource counts** (full/partial extraction, excluded)
 - **External dependency count** and secret count
 - **Deployment commands** (`az deployment group create` and `New-AzResourceGroupDeployment` examples)
-- **Next Steps** section pointing to `dependencies/README.md`, post-deploy RBAC steps, DNS verification, and related skills (azv-bicep-whatif, azv-azure-to-diagram, azv-bicep-policy-check)
+- **Next Steps** section pointing to `dependencies/README.md`, post-deploy RBAC steps, DNS verification, and related skills (azv-bicep-drift-detection, azv-azure-to-diagram, azv-bicep-policy-check)
 
 After writing the README, present the same summary in the chat response.
 

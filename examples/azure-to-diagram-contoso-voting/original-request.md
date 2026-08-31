@@ -63,4 +63,4 @@
 ## Next Steps
 
 - **Generate Bicep from this diagram**: Use `/azv-diagram-to-bicep` with `contoso-voting.drawio`
-- **Compare diagram to live Azure**: Use `/azv-diagram-azure-sync` to detect drift
+- **Compare diagram to live Azure**: Use `/azv-diagram-drift-detection` to detect drift

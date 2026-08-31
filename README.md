@@ -40,14 +40,13 @@ See [docs/getting-started.md](docs/getting-started.md) for the full walkthrough.
 
 | Skill | What it does |
 |-------|-------------|
-| **Diagram-Azure-Sync** | Compare a Draw.io diagram against live Azure — quick (existence) or deep (property-level) |
-| **Bicep-Diagram-Sync** | Compare Bicep templates against their source diagram and resolve divergence |
+| **Diagram-Drift-Detection** | Compare a Draw.io diagram against live Azure — quick (existence) or deep (property-level) — and resolve the drift |
+| **Bicep-Drift-Detection** | Compare Bicep templates against their source diagram or against live Azure, and resolve the drift |
 
 ### Validate Before Deploying
 
 | Skill | What it does |
 |-------|-------------|
-| **Bicep-What-If** | Preview what would change if you deployed — Create, Modify, Delete, No Change |
 | **Bicep-Policy-Check** | Check Bicep against Azure Policy assignments in the target environment |
 
 ## Examples

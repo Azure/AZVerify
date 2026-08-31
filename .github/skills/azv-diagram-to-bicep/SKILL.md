@@ -170,7 +170,7 @@ Write a `README.md` to the output root directory (alongside `main.bicep`) contai
 - **Pre-deployment verification results** (pass/warning/error counts and details)
 - **Generated Files** table (file path + description for every generated file)
 - **Deployment commands** (`az deployment group create` and `New-AzResourceGroupDeployment` examples with a placeholder resource group)
-- **Next Steps** section: edit `.bicepparam` to set real values, related skills (azv-bicep-whatif, azv-bicep-diagram-sync, azv-bicep-policy-check)
+- **Next Steps** section: edit `.bicepparam` to set real values, related skills (azv-bicep-drift-detection, azv-bicep-policy-check)
 
 After writing the README, present the same summary in the chat response:
 
@@ -202,7 +202,7 @@ az deployment group create --resource-group "my-rg" --template-file main.bicep -
 
 ## Important Notes
 
-- This skill operates **independently** — it does not require sketch-to-diagram or diagram-azure-sync.
+- This skill operates **independently** — it does not require sketch-to-diagram or diagram-drift-detection.
 - The `.bicepparam` file is the persistent, user-editable source of truth for deployment settings. The user can open it in any editor, change values, and redeploy. Each parameter has comments explaining what it does and the consequences of changing it.
 - Files are written to disk **one at a time** as they are generated — do not accumulate content in the response. Each file emits only a single `✓ Written:` confirmation line. This keeps responses within length limits for complex diagrams.
 - Generated Bicep uses **secure defaults** — HTTPS only, TLS 1.2+, public access disabled where private endpoints are present.

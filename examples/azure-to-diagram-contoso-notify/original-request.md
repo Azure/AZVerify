@@ -100,5 +100,5 @@
 ## Next Steps
 
 - **Generate Bicep from this diagram**: `/azv-diagram-to-bicep run diagram \`Results/contoso-notify/claude-Sonnet-4.6/artifacts/Contoso-Notify.drawio\``
-- **Compare diagram against live Azure**: `/azv-diagram-azure-sync run diagram \`Results/contoso-notify/claude-Sonnet-4.6/artifacts/Contoso-Notify.drawio\``
-- **Sync with a Bicep deployment**: `/azv-bicep-diagram-sync run diagram \`Results/contoso-notify/claude-Sonnet-4.6/artifacts/Contoso-Notify.drawio\``, bicep root \`Results/contoso-notify/claude-Sonnet-4.6/artifacts/\``
+- **Compare diagram against live Azure**: `/azv-diagram-drift-detection run diagram \`Results/contoso-notify/claude-Sonnet-4.6/artifacts/Contoso-Notify.drawio\``
+- **Sync with a Bicep deployment**: `/azv-bicep-drift-detection run diagram \`Results/contoso-notify/claude-Sonnet-4.6/artifacts/Contoso-Notify.drawio\``, bicep root \`Results/contoso-notify/claude-Sonnet-4.6/artifacts/\``

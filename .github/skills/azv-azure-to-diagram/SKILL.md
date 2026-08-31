@@ -286,7 +286,7 @@ The solution folder was created in Step 3a. Save the diagram file here now (see 
 
 **9c. Create original-request.md**
 
-Document the discovery in `original-request.md` with: source scope, subscription, discovery date, resource counts, full resource table (Resource, Type, Location), full relationship table (Source, Relationship, Target), and notes pointing to related skills (azv-bicep-diagram-sync, azv-diagram-to-bicep). **Full tables go here, not in the chat response.** Do not transcribe raw enrichment JSON properties — only the structured resource and relationship tables are required.
+Document the discovery in `original-request.md` with: source scope, subscription, discovery date, resource counts, full resource table (Resource, Type, Location), full relationship table (Source, Relationship, Target), and notes pointing to related skills (azv-bicep-drift-detection, azv-diagram-to-bicep). **Full tables go here, not in the chat response.** Do not transcribe raw enrichment JSON properties — only the structured resource and relationship tables are required.
 
 **9d. Clean up intermediate files**
 
@@ -294,4 +294,4 @@ Delete all intermediate files from the solution folder before you finish — onl
 
 **9e. Present completion (concise)**
 
-Show: folder path, diagram file with resource count, `original-request.md`, resource/relationship/excluded counts, and next steps pointing to azv-diagram-to-bicep and azv-diagram-azure-sync.
+Show: folder path, diagram file with resource count, `original-request.md`, resource/relationship/excluded counts, and next steps pointing to azv-diagram-to-bicep and azv-diagram-drift-detection.

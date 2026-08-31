@@ -65,6 +65,5 @@ New-AzResourceGroupDeployment `
 
 1. Edit `secure-webapp-waf.bicepparam` to set real, globally unique resource names and your DNS domain
 2. Set the `SQLPASSWORD` environment variable
-3. Run `azv-bicep-whatif` to preview changes against a live environment
-4. Run `azv-bicep-diagram-sync` to verify Bicep matches the diagram
-5. Run `azv-bicep-policy-check` to check Azure Policy compliance
+3. Run `azv-bicep-drift-detection` to verify the Bicep matches the diagram (diagram mode) or a live environment (Azure mode)
+4. Run `azv-bicep-policy-check` to check Azure Policy compliance

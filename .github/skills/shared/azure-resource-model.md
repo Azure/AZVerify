@@ -1,6 +1,6 @@
 # Azure Resource Metadata Model
 
-Shared internal representation used by AzVerify skills (sketch-to-diagram, diagram-to-bicep, diagram-azure-sync).
+Shared internal representation used by AzVerify skills (sketch-to-diagram, diagram-to-bicep, diagram-drift-detection).
 
 ## Schema
 
@@ -129,10 +129,9 @@ Record each detected external dependency as:
 
 - **azure-to-bicep**: Builds a resource model from live Azure resources; generates Bicep from it.
 - **azure-to-diagram**: Builds a resource model from live Azure resources; generates Draw.io XML from it.
-- **bicep-diagram-sync**: Parses both Bicep and Draw.io into resource models and compares them.
+- **bicep-drift-detection**: Parses Bicep into a resource model and compares it against either a Draw.io resource model or live Azure state.
 - **bicep-policy-check**: Parses Bicep into a resource model to evaluate against Azure Policy.
-- **bicep-whatif**: Parses Bicep into a resource model and compares it against live Azure state.
-- **diagram-azure-sync**: Produces two resource models (diagram + live Azure) and compares them (quick or deep mode).
+- **diagram-drift-detection**: Produces two resource models (diagram + live Azure) and compares them (quick or deep mode).
 - **diagram-to-bicep**: Parses Draw.io XML into a resource model; enriches it with configuration manifest; generates Bicep.
 - **sketch-to-diagram**: Produces a resource model from image analysis; generates Draw.io XML via stencil mapping.
 
