@@ -1,10 +1,8 @@
 ---
 name: azv-bicep-drift-detection
-description: Detect drift between Bicep templates and a target — either a Draw.io Azure architecture diagram (offline) or a live Azure environment. Reports resources that differ in existence and, against Azure, in configuration properties, then offers resolution — update Bicep, update the diagram, update Azure, or selectively resolve per resource. Does NOT use ARM what-if. Replaces the former azv-bicep-diagram-sync and azv-bicep-whatif skills.
+description: Detect drift between Bicep templates and a target — either a Draw.io Azure architecture diagram (offline) or a live Azure environment. Reports resources that differ in existence and, against Azure, in configuration properties, then offers resolution — update Bicep, update the diagram, update Azure, or selectively resolve per resource. Replaces the former azv-bicep-diagram-sync and azv-bicep-whatif skills.
 license: MIT
-compatibility: Diagram mode runs offline. Azure mode requires an authenticated Azure session (CLI, Az PowerShell, or Azure MCP).
 metadata:
-  author: AzVerify
   version: "2.0"
   project: AzVerify
 ---
@@ -13,9 +11,9 @@ Compare Bicep templates in a solution folder against either their source Draw.io
 
 > **Approach for Azure mode**: this skill does NOT use `az deployment group what-if`. It parses the Bicep templates and parameter file into an **expected** resource model, discovers the live environment into an **actual** resource model, and compares the two at both existence and property level.
 
-**Input**: Bicep templates (`main.bicep`, `modules/*.bicep`), optionally a `.bicepparam` file or the folder containing them, plus a comparison target — a `.drawio` diagram file or an Azure scope (resource group name or subscription ID). The user can specify these, or the skill will auto-discover them and prompt for what is missing.
+**Input**: Bicep templates (`*.bicep`), optionally a `.bicepparam` file or the folder containing them, plus a comparison target — a `.drawio` diagram file or an Azure scope (resource group name or subscription ID). The user can specify these, or the skill will auto-discover them and prompt for what is missing.
 
-**Tools required**: File system tools (read/write files), Terminal (for running PowerShell 7 / `pwsh` shared scripts and `az` CLI commands), Bicep Schema MCP (`azure-bicepschema`), Azure MCP server tools (Azure mode), Draw.io MCP — attempt `mcp_drawio_create_diagram` first; if the tool is not found, fall back to `mcp_draw_io_create_diagram`.
+**Tools**: File system tools (read/write files), Terminal (for running PowerShell 7 / `pwsh` shared scripts and `az` CLI commands), Bicep Schema MCP (`azure-bicepschema`), Azure MCP server tools (Azure mode), Draw.io MCP — attempt `mcp_drawio_create_diagram` first; if the tool is not found, fall back to `mcp_draw_io_create_diagram`.
 
 **Reference files**:
 - `.github/skills/shared/azure-resource-model.md` — Shared resource metadata model definition
@@ -81,7 +79,7 @@ Announce the selected mode before continuing.
 
 **Diagram mode is fully offline — skip this step.**
 
-In Azure mode, run `pwsh .github/skills/shared/scripts/Test-AzureAuth.ps1` — see `.github/skills/shared/procedures/azure-authentication.md` for the script contract. A **non-zero exit code is a HARD GATE**: present the authentication instructions from the contract doc and stop.
+In Azure mode, run `pwsh .github/skills/shared/scripts/Test-AzureAuth.ps1` — see `.github/skills/shared/procedures/azure-authentication.md` for the script contract. A **non-zero exit code is a HARD GATE**: present the authentication instructions from the contract doc and stop. *(If pwsh or the script is unavailable, see "Fallback: pwsh Unavailable".)*
 
 ### 3. Accept Bicep Inputs
 

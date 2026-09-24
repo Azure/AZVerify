@@ -4,7 +4,6 @@ description: Detect drift between a Draw.io Azure architecture diagram and a liv
 license: MIT
 compatibility: Requires an authenticated Azure session (CLI, Az PowerShell, or Azure MCP).
 metadata:
-  author: AzVerify
   version: "2.0"
   project: AzVerify
 ---
@@ -13,7 +12,7 @@ Compare a Draw.io Azure architecture diagram against a live Azure environment an
 
 **Input**: A Draw.io diagram file (`.drawio` or `.drawio.xml`) and an Azure scope — a resource group name or subscription ID. The user can specify both, or the skill will prompt for missing inputs.
 
-**Tools required**: File system tools (read/write files), Terminal (for running PowerShell 7 / `pwsh` shared scripts and `az` CLI commands), Azure MCP server tools, Draw.io MCP — attempt `mcp_drawio_create_diagram` first; if the tool is not found, fall back to `mcp_draw_io_create_diagram`.
+**Tools**: File system tools (read/write files), Terminal (for running PowerShell 7 / `pwsh` shared scripts and `az` CLI commands), Azure MCP server tools, Draw.io MCP — attempt `mcp_drawio_create_diagram` first; if the tool is not found, fall back to `mcp_draw_io_create_diagram`.
 
 **Reference files**:
 - `.github/skills/shared/azure-resource-model.md` — Shared resource metadata model definition
@@ -60,7 +59,7 @@ Announce the fallback once: "Script execution failed. Please review the script f
 
 ### 1. Check Azure Authentication
 
-Run `pwsh .github/skills/shared/scripts/Test-AzureAuth.ps1` — see `.github/skills/shared/procedures/azure-authentication.md` for the script contract. A **non-zero exit code is a HARD GATE**: present the authentication instructions from the contract doc and stop.
+Run `pwsh .github/skills/shared/scripts/Test-AzureAuth.ps1` — see `.github/skills/shared/procedures/azure-authentication.md` for the script contract. A **non-zero exit code is a HARD GATE**: present the authentication instructions from the contract doc and stop. *(If pwsh or the script is unavailable, see "Fallback: pwsh Unavailable".)*
 
 ### 2. Accept Inputs
 
@@ -210,9 +209,6 @@ Confirm that the report is for reference only and no changes were made. Suggest 
 
 ## Important Notes
 
-- This skill replaces **azv-diagram-azure-sync** (quick) and **azv-diagram-azure-sync-deep** (deep) — both are now modes of this skill.
-- It operates **independently** — it does not require sketch-to-diagram or diagram-to-bicep.
-- **Quick mode** compares existence only (type + name matching). **Deep mode** additionally compares every tracked property from `azure-property-paths.json` with severity classification and the normalization rules documented in `resource-matching.md`.
 - **When the diagram is updated (Step 8 or selective Step 10), Bicep files are regenerated automatically** if they already exist in the diagram's directory.
 - **Destructive operations always require explicit confirmation** — both for deleting Azure resources and for removing diagram elements.
 - This skill never applies changes to Azure directly; it generates Bicep and CLI alternatives for the user to review and deploy.
