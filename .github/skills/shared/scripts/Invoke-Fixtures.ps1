@@ -26,6 +26,9 @@ $ErrorActionPreference = 'Stop'
 $repoRoot    = Resolve-Path (Join-Path -Path $PSScriptRoot -ChildPath '..\..\..\..')
 $examplesRoot = Join-Path -Path $repoRoot -ChildPath 'examples'
 $scriptRoot  = $PSScriptRoot
+# Stay inside the workspace; the agent may lack permissions on the system temp folder.
+$workRoot    = Join-Path -Path $repoRoot -ChildPath '.azverify-tmp'
+New-Item -ItemType Directory -Path $workRoot -Force | Out-Null
 
 $failures = 0
 $results  = New-Object System.Collections.Generic.List[object]
@@ -70,11 +73,11 @@ foreach ($fixture in $fixtures) {
     $paramFile   = Get-ChildItem -LiteralPath $fixture.FullName -Filter '*.bicepparam' -File -ErrorAction SilentlyContinue | Select-Object -First 1
     $drawioFile  = Get-ChildItem -LiteralPath $fixture.FullName -Filter '*.drawio' -File -ErrorAction SilentlyContinue | Select-Object -First 1
 
-    $bicepModelFile  = Join-Path -Path ([System.IO.Path]::GetTempPath()) -ChildPath "$fixtureName-bicep-model.json"
-    $diagramModelFile = Join-Path -Path ([System.IO.Path]::GetTempPath()) -ChildPath "$fixtureName-diagram-model.json"
-    $bicepFilteredFile = Join-Path -Path ([System.IO.Path]::GetTempPath()) -ChildPath "$fixtureName-bicep-filtered.json"
-    $diagramFilteredFile = Join-Path -Path ([System.IO.Path]::GetTempPath()) -ChildPath "$fixtureName-diagram-filtered.json"
-    $compareReportFile = Join-Path -Path ([System.IO.Path]::GetTempPath()) -ChildPath "$fixtureName-compare-report.json"
+    $bicepModelFile  = Join-Path -Path $workRoot -ChildPath "$fixtureName-bicep-model.json"
+    $diagramModelFile = Join-Path -Path $workRoot -ChildPath "$fixtureName-diagram-model.json"
+    $bicepFilteredFile = Join-Path -Path $workRoot -ChildPath "$fixtureName-bicep-filtered.json"
+    $diagramFilteredFile = Join-Path -Path $workRoot -ChildPath "$fixtureName-diagram-filtered.json"
+    $compareReportFile = Join-Path -Path $workRoot -ChildPath "$fixtureName-compare-report.json"
 
     try {
         # --- ConvertFrom-DrawioDiagram ---
@@ -202,6 +205,10 @@ foreach ($fixture in $fixtures) {
             }
         }
     }
+}
+
+if (-not (Get-ChildItem -LiteralPath $workRoot -Force)) {
+    Remove-Item -LiteralPath $workRoot -Force -ErrorAction SilentlyContinue
 }
 
 $results | ConvertTo-Json -Depth 10 | Write-Output

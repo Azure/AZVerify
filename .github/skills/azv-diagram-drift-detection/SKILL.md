@@ -37,7 +37,7 @@ Compare a Draw.io Azure architecture diagram against a live Azure environment an
 
 Follow `.github/skills/shared/procedures/output-budget.md` strictly. In addition:
 
-- Keep all resource models in temporary JSON files (`diagram-model.json`, `azure-model.json`, `match-report.json`) in a working directory next to the diagram, and reference them by path between steps instead of echoing their contents.
+- Keep all resource models in temporary JSON files (`diagram-model.json`, `azure-model.json`, `match-report.json`) in `<work-dir>` = `.azverify-tmp/` in the diagram's folder (never outside the repository — see rule 6 of the output budget), and reference them by path between steps instead of echoing their contents.
 - Never echo Draw.io XML in the response — show the file path and a change summary only.
 - Delete the intermediate JSON files once the drift report has been presented and any chosen resolution has been applied.
 
@@ -197,7 +197,7 @@ Follow section **A. Existence-Level Resolution** of `.github/skills/shared/proce
 
 ### 11. Resolution: Property Drifts (Deep Mode Only)
 
-Follow section **B. Property-Level Drift Resolution** of `.github/skills/shared/procedures/resolution-update-azure.md`. That procedure covers per-property choices (Update Azure / Accept Azure / Skip), Bicep `existing`-reference snippets and CLI alternatives, `.bicepparam` updates for accepted Azure values, and the final confirmation gate.
+Follow section **B. Property-Level Drift Resolution** of `.github/skills/shared/procedures/resolution-update-azure.md`. That procedure covers per-property choices (Update Azure / Accept Azure / Skip), targeted CLI commands and full-resource Bicep snippets, `.bicepparam` updates for accepted Azure values, and the final confirmation gate.
 
 Note operational impact where relevant — for example, changing `vmSize` requires VM deallocation.
 

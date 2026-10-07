@@ -41,7 +41,7 @@ Compare Bicep templates in a solution folder against either their source Draw.io
 
 Follow `.github/skills/shared/procedures/output-budget.md` strictly. In addition:
 
-- Keep all resource models in temporary JSON files (`bicep-model-raw.json`, `bicep-model.json`, `diagram-model.json` or `azure-model.json`, `match-report.json`) in a working directory inside the solution folder, and reference them by path between steps instead of echoing their contents.
+- Keep all resource models in temporary JSON files (`bicep-model-raw.json`, `bicep-model.json`, `diagram-model.json` or `azure-model.json`, `match-report.json`) in `<work-dir>` = `<solution-folder>/.azverify-tmp/` (never outside the repository — see rule 6 of the output budget), and reference them by path between steps instead of echoing their contents.
 - Never echo generated Bicep or Draw.io XML in the response — show file paths and a change summary only.
 - Delete the intermediate JSON files once the drift report has been presented and any chosen resolution has been applied.
 
@@ -230,10 +230,9 @@ pwsh .github/skills/shared/scripts/Get-AzureResourceModel.ps1 -SubscriptionId <s
 Notes:
 - `-Enrich` populates each resource's `properties` bag with the tracked properties from `azure-property-paths.json`, which the property comparison in Step 7 requires.
 - Do **not** pass `-StripReadOnly` — drift comparison needs the full property bag.
-- `-Mode bicep` applies the shared exclusion rules for Azure-managed resources (auto-created NICs and disks, network watchers, smart detector alert rules, portal dashboards, and the rest of `resource-filter-rules.json`). Do not maintain a separate inline exclusion list.
+- `-Mode bicep` applies the shared exclusion rules in `.github/skills/shared/data/resource-filter-rules.json` (network watchers, smart detector alert rules, portal dashboards, deployment history, template specs, `Microsoft.Authorization/*`, and resources tagged only with `hidden-*` keys). Do not maintain a separate inline exclusion list. Resources that Azure creates implicitly alongside a declared resource — such as a VM's OS disk — are **not** filtered; Step 8 annotates them.
 - Report a single summary line after enrichment (e.g. "Discovered 18 resources, enriched 18"), not one line per resource.
-- If a resource's properties cannot be retrieved, its tracked properties are recorded as `unknown` — continue with the remaining resources.
-- If the script exits non-zero or emits unparseable output, use the inline fallback in the discovery contract.
+- The script stops (non-zero exit) if any resource's details cannot be retrieved. If the script exits non-zero or emits unparseable output, use the inline fallback in the discovery contract; in the fallback, record each tracked property that cannot be retrieved as the literal string `unknown` and continue with the remaining resources.
 - If the result count is zero and the resource group was confirmed to exist, warn that the authenticated identity may lack Reader permissions, or that nothing has been deployed yet.
 
 ### 7. Compare Models and Classify Drift
@@ -248,7 +247,10 @@ pwsh .github/skills/shared/scripts/Compare-ResourceModels.ps1 -ModelA <work-dir>
 pwsh .github/skills/shared/scripts/Compare-ResourceModels.ps1 -ModelA <work-dir>/bicep-model.json -ModelB <work-dir>/azure-model.json -LabelA Bicep -LabelB Azure -CompareProperties -OutFile <work-dir>/match-report.json
 ```
 
-Use the emitted match report as the authoritative comparison result.
+Use the emitted match report as the authoritative **matching** result. The script compares property values literally, so in Azure mode post-process each `propertyComparison.drifts` list (after the Step 4a default fallback) before classifying:
+- A drift whose Azure value (`valueB`) is `unknown` is reported as `⚠️ Unknown` — never counted as matching or drifting.
+- A drift whose template value (`valueA`) is an unresolved ARM expression (a string starting with `[` and ending with `]`) or an `<unresolved: …>` marker is reported as `⚠️ Unresolved` — the expected value cannot be determined offline, so it is never counted as drift.
+- Recompute each resource's drift count after removing these entries.
 
 **Diagram mode classifications**: **In Sync**, **In Sync (name differs)**, **Bicep Only** (in templates, not in the diagram), **Diagram Only** (in the diagram, not in the templates). Bicep-specific rules: diagram VNet containers match `Microsoft.Network/virtualNetworks`; resources declared with an `if` condition are classified normally but annotated "conditional".
 
@@ -258,12 +260,13 @@ Use the emitted match report as the authoritative comparison result.
 |---|---|
 | 🆕 **Create** | In the templates but not in Azure — will be created on deployment |
 | ✏️ **Modify** | In both, but one or more tracked properties differ |
-| 🗑️ **Delete** | In Azure but not in the templates — would be removed by an authoritative (Complete mode) deployment |
+| 🗑️ **Delete** | In Azure but not declared in the templates |
+| ⚠️ **Name Mismatch** | Matched by type but not by name — a deployment would create the template-named resource instead of modifying the Azure one |
 | ✅ **No Change** | In both, with all tracked properties matching |
 
-Azure mode is always property-aware — the `propertyComparison` object per matched resource distinguishes **Modify** from **No Change**, using the expected value from the templates (or the `azure-property-paths.json` default where the templates leave it unset) and the normalization rules documented in `resource-matching.md`. Handle two edge cases explicitly:
-- A property whose actual value is `unknown` (retrieval failed in Step 6c) is reported as `⚠️ Unknown` — never counted as matching or drifting.
-- A matched resource with no comparable tracked properties is reported as `No Comparable Properties`, not as No Change.
+Map match-report entries as follows: `Bicep Only` → **Create**; `Azure Only` → **Delete**; `In Sync` → **Modify** when at least one drift remains after post-processing, otherwise **No Change**; `In Sync (name differs)` → **Name Mismatch**, regardless of its property results (show them for reference only). Name-differs matches come from the single-of-type and near-name heuristics, so ask the user to confirm each pair is the same logical resource; a template resource whose name is an unresolved expression can only match this way — annotate it "template name unresolved".
+
+Azure mode is always property-aware — the `propertyComparison` object per matched resource distinguishes **Modify** from **No Change**, using the expected value from the templates (or the `azure-property-paths.json` default where the templates leave it unset) and the normalization rules documented in `resource-matching.md`. A matched resource with no comparable tracked properties (including after removing Unknown and Unresolved entries) is reported as `No Comparable Properties`, not as No Change.
 
 ### 8. Present the Drift Report
 
@@ -287,10 +290,11 @@ Azure mode is always property-aware — the `propertyComparison` object per matc
 | my-subnet | Subnet | ✅ In Sync (name differs) | Diagram: "default", Bicep: "snet-default" |
 ```
 
-**Azure mode**: header with the target scope and the template/parameter paths, then a summary table with counts per category (🆕 Create, ✏️ Modify, 🗑️ Delete, ✅ No Change), then per-category sections:
+**Azure mode**: header with the target scope and the template/parameter paths, then a summary table with counts per category (🆕 Create, ✏️ Modify, 🗑️ Delete, ⚠️ Name Mismatch, ✅ No Change), then per-category sections:
 - **🆕 Create** — table of template resources missing from Azure (columns: #, Resource, Type, Resource Group)
 - **✏️ Modify** — one property diff table per resource (columns: Property, Current Azure Value, Template Value, Severity, Source)
-- **🗑️ Delete** — table of Azure resources absent from the templates, with the authoritative-deployment warning
+- **🗑️ Delete** — table of Azure resources absent from the templates. Annotate resources that Azure likely created implicitly for another resource in scope (e.g. an OS disk named after a VM) as "likely auto-created". Warn that a Complete-mode deployment would remove these resources **and** every resource type excluded from this report by the filter rules
+- **⚠️ Name Mismatch** — table of paired resources (columns: #, Template Name, Azure Name, Type, Notes)
 - **✅ No Change** — collapsible `<details>` section listing matched resources
 
 > **CRITICAL**: property diff tables MUST contain **only** properties where expected ≠ actual after normalization. Matching properties belong in the "No Change" section, never mixed into a diff table.
@@ -303,6 +307,8 @@ Azure mode is always property-aware — the `propertyComparison` object per matc
 
 Present options based on the mode and the drift found.
 
+In Azure mode, first ask whether the templates are the source of truth. If they are, recommend **Update Azure** (redeploy) as the default. Drift then usually means changes were made outside Bicep (portal, CLI, scripts) since the last deployment.
+
 **Diagram mode:**
 1. **Update Bicep** — add diagram-only resources to the templates, remove Bicep-only resources
 2. **Update Diagram** — add Bicep-only resources to the diagram, remove diagram-only resources
@@ -313,17 +319,19 @@ Present options based on the mode and the drift found.
 
 | Drift type | Options offered |
 |---|---|
-| Existence only | Update Bicep, Update Azure, Selective, No action |
-| Property only | Update Bicep (adopt Azure values), Resolve Property Drifts, No action |
+| Existence only (Create, Delete, Name Mismatch) | Update Bicep, Update Azure, Selective, No action |
+| Property only | Update Bicep (adopt Azure values), Update Azure (reset to template values), Resolve Property Drifts, No action |
 | Both | Update Bicep, Update Azure, Selective, Resolve Property Drifts, No action |
 
-In Azure mode, **Update Bicep** brings the templates in line with what is actually deployed — adding Azure-only resources, removing template resources that do not exist in Azure, and adopting Azure-actual values for drifted properties. **Update Azure** generates deployment artifacts that bring the environment in line with the templates.
+In Azure mode, **Update Bicep** brings the templates in line with what is actually deployed — adding Azure-only resources, removing template resources that do not exist in Azure, renaming Name Mismatch resources to their Azure names, and adopting Azure-actual values for drifted properties. **Update Azure** produces a deployment command for the existing templates — which creates missing resources and resets drifted properties to template values — plus targeted deletion commands for resources absent from the templates.
 
 Wait for the user's choice before proceeding.
 
 ### 10. Resolution: Update Bicep
 
 Follow `.github/skills/shared/procedures/resolution-update-bicep.md` with `<source>` = `Diagram` (diagram mode) or `Azure` (Azure mode). That procedure covers the confirmation gate, deployment verification, module placement and generation of added resources, the dependency and empty-template halt checks on removal, the property-update flow for adopting Azure-actual values, and the result summary.
+
+In Azure mode, handle each confirmed Name Mismatch pair as a rename, not a removal plus addition: set the template resource's name (or the parameter value that feeds it) to the Azure name, and include it in the confirmation list.
 
 In Azure mode, never copy secret-bearing values discovered from Azure into templates — declare `@secure()` parameters instead.
 
@@ -333,19 +341,44 @@ Follow `.github/skills/shared/procedures/resolution-update-diagram.md` with `<so
 
 ### 12. Resolution: Update Azure (Azure Mode)
 
-Follow section **A. Existence-Level Resolution** of `.github/skills/shared/procedures/resolution-update-azure.md` with `<source>` = `Bicep`. That procedure covers the "confirm" gate, deployment verification, generation of create artifacts, removal artifacts for Azure-only resources, and the output summary including the deployment command.
+Follow section **A. Existence-Level Resolution** of `.github/skills/shared/procedures/resolution-update-azure.md` with `<source>` = `Bicep`. The selected templates already describe the expected state, so do **not** generate new Bicep for them. Apply the procedure with these substitutions:
+
+1. **A1** — list the resources to be created, the property drifts to be reset to template values, and the resources to be deleted; require "confirm".
+2. **A2** — run the verification ruleset against the existing templates. Report any errors and direct the user to fix the templates first (Update Bicep or a manual edit); do not produce a deployment command for templates with known errors.
+3. **A3** — instead of generating Bicep, produce an **Incremental** deployment of the selected entry point and parameter file. It creates the 🆕 resources, creates the template-named resource of each ⚠️ Name Mismatch, and resets the ✏️ property drifts:
+   ```powershell
+   az deployment group create --resource-group <rg-name> --template-file <selected-bicep-file> --parameters <selected-param-file> --mode Incremental
+   ```
+   Omit `--parameters` when no parameter file was selected. Use `az deployment sub create --location <region>` instead when the template declares `targetScope = 'subscription'`.
+4. **A4** — do **not** recommend a Complete-mode deployment: it would also delete every resource excluded from this report by the filter rules. Generate one targeted command per 🗑️ resource, and per Azure-side resource of a Name Mismatch the user chooses to retire: `az resource delete --ids <resource-id>`. Leave out resources annotated "likely auto-created" unless the user explicitly selects them.
+5. **A5** — present the commands above with the procedure's review warning.
+
+#### Redeploying after changes made outside Bicep
+
+Before presenting the A3 command, gather context and warn about side effects:
+
+1. **Last deployment** — run `az deployment group list --resource-group <rg-name> --query "sort_by([].{name:name, timestamp:properties.timestamp, state:properties.provisioningState}, &timestamp)[-5:]" -o table`. Report when the template was last deployed, or that no deployment matching the entry point was found (the resources may never have been deployed from these templates).
+2. **Who changed what** — for each ✏️ resource, query the Activity Log since that deployment: `az monitor activity-log list --resource-id <resource-id> --start-time <last-deployment-timestamp> --query "[?operationName.value && contains(operationName.value, 'write')].{time:eventTimestamp, caller:caller, op:operationName.value}" -o table`. Show the caller and time next to each drift. That way the user can spot intentional changes made directly in Azure (for example, an incident scale-up) and choose **Accept Azure** for those before redeploying. The Activity Log only keeps 90 days of history; if the last deployment is older than that, say that the change history is incomplete.
+3. **Side-effect warnings** — tell the user that the redeploy:
+   - resets **every** property the templates declare, including properties this report does not track, so it can change more than the report shows
+   - may reset or remove configuration the templates leave out, because ARM replaces a resource's full configuration. Common cases: subnets defined inline on a virtual network (out-of-band subnets are removed, or the deployment fails if they are in use), app settings, NSG rules, and access policies
+   - fails on properties that cannot change after creation (such as `location` or some SKU tiers); these need delete-and-recreate
+4. **Preview** — recommend running the same command with `what-if` before deploying, to see exactly what will change: `az deployment group what-if --resource-group <rg-name> --template-file <selected-bicep-file> --parameters <selected-param-file>`. This skill doesn't use `what-if` to detect drift, but it is the right check before an actual redeploy.
 
 ### 13. Resolution: Property Drifts (Azure Mode)
 
-Follow section **B. Property-Level Drift Resolution** of `.github/skills/shared/procedures/resolution-update-azure.md`. That procedure covers per-property choices (Update Azure / Accept Azure / Skip), Bicep `existing`-reference snippets and CLI alternatives, `.bicepparam` updates for accepted Azure values, and the final confirmation gate.
+Follow section **B. Property-Level Drift Resolution** of `.github/skills/shared/procedures/resolution-update-azure.md` with `<source>` = `Bicep`, with these substitutions:
+
+- **Update Azure** — the templates already declare the expected value. Offer the targeted CLI command from B2 for that property, or the Incremental deployment from Step 12. Warn that the deployment resets **every** drifted property of the deployed resources, including ones the user chose to Skip.
+- **Accept Azure** — apply via the "Update properties" section of `.github/skills/shared/procedures/resolution-update-bicep.md`, which updates either the module value or the parameter that feeds it.
 
 Note operational impact where relevant — for example, changing `vmSize` requires VM deallocation.
 
 ### 14. Resolution: Selective Updates
 
-**14a.** Present per-resource choices in a table (columns: #, Resource, Type, Status, Resolve), with direction-specific options for each drifted resource — diagram mode: "Add to Bicep / Remove from diagram / Skip" and "Remove from Bicep / Add to diagram / Skip"; Azure mode: "Add to Bicep / Create in Azure / Skip" and "Remove from Bicep / Delete from Azure / Skip". Do not write any files while collecting choices.
+**14a.** Present per-resource choices in a table (columns: #, Resource, Type, Status, Resolve), with direction-specific options for each drifted resource — diagram mode: "Add to Bicep / Remove from diagram / Skip" and "Remove from Bicep / Add to diagram / Skip"; Azure mode: "Add to Bicep / Delete from Azure / Skip" for Azure-only resources, "Remove from Bicep / Create in Azure / Skip" for template-only resources, and "Rename in Bicep / Create template-named resource in Azure / Skip" for Name Mismatch pairs. Do not write any files while collecting choices.
 
-**14b.** Group the decisions by direction and apply each bucket via the matching procedure (Steps 10–12). Skip the bulk confirmations inside those procedures; the per-resource choices replace them, except the "confirm" gate before generating Azure deletion artifacts, which still applies once. Run deployment verification for every resource being added to Bicep before generating its block, then batch all file writes and apply them at once.
+**14b.** Group the decisions by direction and apply each bucket via the matching procedure (Steps 10–12). Skip the bulk confirmations inside those procedures; the per-resource choices replace them, except the "confirm" gate before generating Azure deletion artifacts, which still applies once. Run deployment verification for every resource being added to Bicep before generating its block, then batch all file writes and apply them at once. "Create in Azure" choices use the Step 12 deployment, which deploys the whole template — warn that it also creates and resets resources the user chose to Skip.
 
 **14c.** Present a combined summary table (columns: Resource, Type, Action) plus the remaining unresolved drift count.
 
@@ -355,6 +388,7 @@ Confirm that the report is for reference only and no changes were made.
 
 - If deletions were detected in Azure mode, remind the user to verify that the exclusions are intentional before running an authoritative deployment
 - Suggest reviewing Critical-severity property drifts first
+- To prevent recurring drift from changes made outside Bicep, suggest deploying only through a pipeline, or using [Deployment Stacks](https://learn.microsoft.com/azure/azure-resource-manager/bicep/deployment-stacks) with `--deny-settings-mode denyWriteAndDelete`
 - Suggest related skills: **azv-diagram-drift-detection** (validate the diagram against Azure), **azv-bicep-policy-check** (check the templates against Azure Policy), **azv-diagram-to-bicep** (regenerate templates from the diagram)
 
 ---
@@ -366,4 +400,4 @@ Confirm that the report is for reference only and no changes were made.
 - **Azure mode does not use ARM what-if.** It builds both models itself and compares them, which is why unregistered providers are reported as a warning rather than a failure.
 - Azure mode is always property-aware — there is no separate quick/deep toggle. Diagram mode is existence-level only, because a diagram does not carry the tracked configuration properties.
 - **Destructive operations always require explicit confirmation** — for removing resources from templates, removing diagram elements, and generating Azure deletion artifacts.
-- This skill never applies changes to Azure directly; it generates Bicep and CLI alternatives for the user to review and deploy.
+- This skill never applies changes to Azure directly; it produces deployment and CLI commands for the user to review and run.

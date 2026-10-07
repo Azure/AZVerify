@@ -39,7 +39,7 @@ For `<source>`-only resources, generate Bicep templates using `.github/skills/sh
 
 ### A4. Generate Bicep for Resources to Delete
 
-For Azure-only resources that need to be removed, generate a Bicep template that omits those resources. Note to the user: deploy this template in Complete mode to remove them, or delete manually via the Azure portal or CLI.
+For Azure-only resources that need to be removed, prefer one targeted command per resource (`az resource delete --ids <resource-id>`). Do not recommend a Complete-mode deployment: it also deletes every resource excluded from the drift report by the filter rules.
 
 ### A5. Present Output
 
@@ -63,7 +63,7 @@ Wait for per-property decisions.
 
 ### B2. "Update Azure" Decisions
 
-Generate Bicep snippets using `existing` references targeting only the drifted properties, plus CLI command alternatives. Note operational impact where relevant (e.g., changing `vmSize` deallocates the VM).
+Generate a targeted CLI command per drifted property (`az resource update --ids <resource-id> --set <armJsonPath>=<value>`, using the ARM path from `azure-property-paths.json`). When a Bicep artifact is needed, declare the full resource with the expected values — not an `existing` reference, which is read-only and cannot set properties — because an ARM PUT resets unspecified properties to their defaults. Note operational impact where relevant (e.g., changing `vmSize` deallocates the VM).
 
 ### B3. "Accept Azure" Decisions
 

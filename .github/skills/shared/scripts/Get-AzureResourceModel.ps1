@@ -813,8 +813,10 @@ try {
     }
 
     if (-not [string]::IsNullOrWhiteSpace($Mode)) {
-        $tempInput = Join-Path ([System.IO.Path]::GetTempPath()) ("azverify-discovery-{0}.json" -f [guid]::NewGuid().ToString('N'))
-        $tempOutput = Join-Path ([System.IO.Path]::GetTempPath()) ("azverify-discovery-filtered-{0}.json" -f [guid]::NewGuid().ToString('N'))
+        # Stay inside the workspace; the agent may lack permissions on the system temp folder.
+        $tempDirectory = if ($OutFile) { Split-Path -Path ([System.IO.Path]::GetFullPath($OutFile)) -Parent } else { (Get-Location).Path }
+        $tempInput = Join-Path $tempDirectory (".azverify-discovery-{0}.json" -f [guid]::NewGuid().ToString('N'))
+        $tempOutput = Join-Path $tempDirectory (".azverify-discovery-filtered-{0}.json" -f [guid]::NewGuid().ToString('N'))
         try {
             Write-ResourceModel -Model $model -OutFile $tempInput
             & (Join-Path $PSScriptRoot 'Select-AzureResources.ps1') -InputFile $tempInput -Mode $Mode -OutFile $tempOutput

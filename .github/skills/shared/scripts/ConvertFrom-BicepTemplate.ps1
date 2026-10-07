@@ -841,7 +841,9 @@ try {
     else {
         $null
     }
-    $temporaryDirectory = Join-Path -Path ([System.IO.Path]::GetTempPath()) -ChildPath ("azverify-bicep-" + [guid]::NewGuid().ToString('N'))
+    # Stay inside the workspace; the agent may lack permissions on the system temp folder.
+    $temporaryRoot = Join-Path -Path (Split-Path -Path $resolvedBicepFile -Parent) -ChildPath '.azverify-tmp'
+    $temporaryDirectory = Join-Path -Path $temporaryRoot -ChildPath ("bicep-" + [guid]::NewGuid().ToString('N'))
     New-Item -ItemType Directory -Path $temporaryDirectory -Force | Out-Null
 
     try {
@@ -914,6 +916,9 @@ try {
     finally {
         if (Test-Path -LiteralPath $temporaryDirectory) {
             Remove-Item -LiteralPath $temporaryDirectory -Recurse -Force -ErrorAction SilentlyContinue
+        }
+        if ((Test-Path -LiteralPath $temporaryRoot) -and -not (Get-ChildItem -LiteralPath $temporaryRoot -Force)) {
+            Remove-Item -LiteralPath $temporaryRoot -Force -ErrorAction SilentlyContinue
         }
     }
 }
