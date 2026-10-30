@@ -128,6 +128,24 @@ foreach ($fixture in $fixtures) {
                 else {
                     Add-Result -Fixture $fixtureName -Test 'BicepTemplate' -Passed $false -Detail 'Parser returned 0 resources'
                 }
+
+                # A raw ARM expression in a name means the evaluator skipped it rather than marking it unresolved.
+                $rawExpressionNames = @($bicepModel.resources | Where-Object { ([string]$_.name).StartsWith('[') })
+                Add-Result -Fixture $fixtureName -Test 'BicepTemplate-NoRawExpressions' -Passed ($rawExpressionNames.Count -eq 0) `
+                    -Detail (@($rawExpressionNames | ForEach-Object { $_.name }) -join ', ')
+
+                $expectedNamesFile = Join-Path -Path $fixture.FullName -ChildPath 'expected-names.json'
+                if (Test-Path -LiteralPath $expectedNamesFile) {
+                    # Parenthesise so Windows PowerShell 5.1 enumerates the top-level JSON array.
+                    $expectedNames = @((Get-Content -LiteralPath $expectedNamesFile -Raw | ConvertFrom-Json) | ForEach-Object { [string]$_ })
+                    $actualNames = @($bicepModel.resources |
+                            Where-Object { $_.type -ne 'Microsoft.Resources/deployments' } |
+                            ForEach-Object { "$($_.type)|$($_.name)" })
+                    $nameDifferences = @(Compare-Object -ReferenceObject $expectedNames -DifferenceObject $actualNames |
+                            ForEach-Object { "$($_.SideIndicator) $($_.InputObject)" })
+                    Add-Result -Fixture $fixtureName -Test 'BicepTemplate-ExpectedNames' -Passed ($nameDifferences.Count -eq 0) `
+                        -Detail ($nameDifferences -join '; ')
+                }
             }
             catch {
                 Add-Result -Fixture $fixtureName -Test 'BicepTemplate' -Passed $false -Detail $_.Exception.Message

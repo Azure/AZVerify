@@ -36,6 +36,10 @@ pwsh .github/skills/shared/scripts/ConvertFrom-BicepTemplate.ps1 -BicepFile <mai
 
 - The script requires `az bicep build` or standalone `bicep build`. If neither is available, the script exits with a non-zero code; the calling skill should then follow the inline fallback below.
 - If `pwsh` or the script is unavailable, use the inline fallback below.
+- The compiled ARM JSON is evaluated offline by `_ArmExpression.ps1`: parameters, variables, user-defined and imported functions (e.g. `getName` / `getNameForComponent` from `commonTypesAndFunctions/namingconvention.bicep`), module deployments, conditions and copy loops. Each copy-loop iteration becomes its own resource with `symbolicName` suffixed `[i]`.
+- Resources whose `condition` evaluates to `false` are omitted. `existing` resources are skipped.
+- Values that depend on deployment-time state (`reference()` to non-module resources, `listKeys()`, `guid()`, `uniqueString()`, `subscription().tenantId`) are emitted as `<unresolved: reason>`. The subscription ID is always `<subscription-id>`.
+- stderr ends with a summary: either `Resolved all N resource name(s).` or a `WARNING` listing each resource whose `name` contains `<unresolved:`.
 
 ## Script Unavailable — Inline Fallback
 

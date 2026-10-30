@@ -1,71 +1,70 @@
 
 # AzVerify
 
-Your Azure diagram, your Bicep templates, and your live environment are three separate sources of truth. They can drift apart.
-
-AzVerify gives GitHub Copilot the skills to connect them.
+Your Azure architecture diagram, Bicep templates, and deployed Azure environment are separate sources of truth. AzVerify provides GitHub Copilot skills to create and compare them, and to check Bicep templates against Azure Policy before deployment.
 
 ![AzVerify overview](image.png)
 
 ## Quick Start
 
-1. Sign in to GitHub Copilot Chat in VS Code (requires GitHub Copilot subscription) (or use the CopilotCLI, see [Getting Started](docs/getting-started.md))
-2. Install the [Draw.io VS Code extension](https://marketplace.visualstudio.com/items?itemName=hediet.vscode-drawio)
-3. For best results, Install MCP servers: [Draw.io MCP](https://mcp.draw.io/mcp) and [Azure MCP](https://github.com/microsoft/mcp/tree/main/servers/Azure.Mcp.Server) in VS Code
-4. Clone this repo: `git clone https://github.com/Ba4bes/AzVerify.git`
-5. Run a skill: Open Copilot Chat and try:
+1. Clone this repository and open its root folder in VS Code:
    ```text
-   /azv-azure-to-diagram run Resource Group `<your-rg>`, Subscription `<your-sub-id>`
+   git clone https://github.com/Ba4bes/AzVerify.git
+   ```
+2. Sign in to GitHub Copilot Chat. Skills in `.github/skills/` are discovered from the workspace.
+3. For diagram workflows, install the [Draw.io VS Code extension](https://marketplace.visualstudio.com/items?itemName=hediet.vscode-drawio). Configure the [Draw.io MCP server](https://mcp.draw.io/mcp) and, for Azure workflows, the [Azure MCP server](https://github.com/microsoft/mcp/tree/main/servers/Azure.Mcp.Server) for the best experience.
+4. Authenticate to Azure before running a skill that reads or checks a live Azure scope.
+5. Try a skill in Copilot Chat:
+   ```text
+   /azv-azure-to-diagram Resource Group `<your-resource-group>`, Subscription `<your-subscription-id>`
    ```
 
-See [docs/getting-started.md](docs/getting-started.md) for the full walkthrough.
+See [Getting Started](docs/getting-started.md) for setup details and [Example Prompts](docs/example-prompts.md) for prompts covering every skill.
 
 ## Skills
 
-### Reverse-Engineer from Live Azure
+Invoke a skill in Copilot Chat with its slash command. Azure-backed skills need an authenticated Azure session and a target resource group or subscription.
+
+### Create diagrams and Bicep
 
 | Skill | What it does |
 |-------|-------------|
-| **Azure-to-Diagram** | Discover resources in a live Azure scope and generate a Draw.io architecture diagram |
-| **Azure-to-Bicep** | Reverse-engineer a live Azure scope into deployment-ready Bicep templates with parameter files |
+| [`azv-azure-to-diagram`](.github/skills/azv-azure-to-diagram/SKILL.md) | Discover a live Azure scope and produce a Draw.io architecture diagram. |
+| [`azv-azure-to-bicep`](.github/skills/azv-azure-to-bicep/SKILL.md) | Reverse-engineer a live Azure scope into modular Bicep templates, parameter files, and dependency documentation. |
+| [`azv-sketch-to-diagram`](.github/skills/azv-sketch-to-diagram/SKILL.md) | Turn an architecture sketch or text description into a Draw.io Azure diagram. |
+| [`azv-diagram-to-bicep`](.github/skills/azv-diagram-to-bicep/SKILL.md) | Generate modular Bicep and deployment scripts from a Draw.io diagram, with a parameter file and pre-deployment verification. |
 
-### Generate from Diagrams and Descriptions
-
-| Skill | What it does |
-|-------|-------------|
-| **Sketch-to-Diagram** | Convert a rough sketch or text description into a professional Draw.io Azure architecture diagram |
-| **Diagram-to-Bicep** | Generate modular Bicep templates from a Draw.io diagram, with pre-deployment verification |
-
-### Detect and Resolve Drift
+### Compare and validate
 
 | Skill | What it does |
 |-------|-------------|
-| **Diagram-Drift-Detection** | Compare a Draw.io diagram against live Azure — quick (existence) or deep (property-level) — and resolve the drift |
-| **Bicep-Drift-Detection** | Compare Bicep templates against their source diagram or against live Azure, and resolve the drift |
+| [`azv-bicep-drift-detection`](.github/skills/azv-bicep-drift-detection/SKILL.md) | Compare Bicep with its Draw.io design (offline) or a live Azure scope (including tracked properties), then guide drift resolution. |
+| [`azv-diagram-drift-detection`](.github/skills/azv-diagram-drift-detection/SKILL.md) | Compare a Draw.io diagram with live Azure in quick (resource existence) or deep (property-level) mode, then guide drift resolution. |
+| [`azv-bicep-policy-check`](.github/skills/azv-bicep-policy-check/SKILL.md) | Evaluate Bicep resources against Azure Policy assignments at a target scope before deployment. |
 
-### Validate Before Deploying
+The two drift-detection skills replace the former diagram-sync and Bicep what-if/sync skills. Bicep drift detection parses templates and compares resource models; it does not run `az deployment ... what-if`.
 
-| Skill | What it does |
-|-------|-------------|
-| **Bicep-Policy-Check** | Check Bicep against Azure Policy assignments in the target environment |
+## Shared tooling
+
+The reusable resource-model parsers, filters, Azure discovery, comparison logic, and fixture checks live in [`.github/skills/shared/scripts/`](.github/skills/shared/scripts/), with shared resource metadata and workflow procedures alongside them. The PowerShell scripts prefer PowerShell 7 (`pwsh`); Windows PowerShell 5.1 is also supported. Bicep parsing uses `az bicep` or the standalone Bicep CLI. Individual skills document their fallbacks when a tool is unavailable.
 
 ## Examples
-The [examples/](examples/) folder contains skill outputs and inputs from several scenarios. Note: some example folder names were renamed; use the directories shown below.
+The [examples/](examples/) folder contains inputs and generated outputs—Draw.io diagrams, Bicep templates, parameter files, and selected verification or drift reports—from four Azure scenarios.
 
 | Example Directory | What it demonstrates |
 |-------------------|---------------------|
-| [examples/azure-to-diagram-contoso-voting](examples/azure-to-diagram-contoso-voting/) | Reverse-engineered App Service + Key Vault + Storage + EventGrid |
-| [examples/sketch-to-diagram-resourcegroup01](examples/sketch-to-diagram-resourcegroup01/) | Sketch → Diagram → Bicep pipeline with validation reports |
-| [examples/description-to-diagram-securewebapp](examples/description-to-diagram-securewebapp/) | WAF-protected web app with Application Gateway, SQL, and Private Endpoints |
-| [examples/azure-to-diagram-contoso-notify](examples/azure-to-diagram-contoso-notify/) | Function App / other pipelines (folder name preserved as-is in repo) |
+| [Contoso Voting](examples/azure-to-diagram-contoso-voting/) | Live App Service deployment reverse-engineered into a diagram and Bicep. |
+| [Resource Group 01](examples/sketch-to-diagram-resourcegroup01/) | Sketch-to-diagram-to-Bicep workflow with drift and policy reports. |
+| [Secure Web App](examples/description-to-diagram-securewebapp/) | Text-described WAF-protected web app, diagram, and Bicep. |
+| [Contoso Notify](examples/azure-to-diagram-contoso-notify/) | Function App reverse-engineering with Bicep, drift, and policy reports. |
 
 ## Documentation
 
 | Document | Purpose |
 |----------|---------|
-| [Getting Started](docs/getting-started.md) | Prerequisites, MCP setup, first skill walkthrough |
-| [Example Prompts](docs/example-prompts.md) | Copy-paste prompts for every skill |
-| [Test Run Tracker](docs/test-run-tracker.md) | Notes and results from skill test runs |
+| [Getting Started](docs/getting-started.md) | Prerequisites, MCP setup, and first skill walkthrough. |
+| [Example Prompts](docs/example-prompts.md) | Copy-and-edit prompts for each skill. |
+| [Test Run Tracker](docs/test-run-tracker.md) | Recorded skill test runs and results. |
 
 ## Contributing
 
