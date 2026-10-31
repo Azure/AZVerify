@@ -1,14 +1,8 @@
----
-name: azv-functional-testing
-description: Run repeatable, bounded functional tests for all seven AzVerify Azure architecture skills using the approved AzVerify1 and AzVerify2 resource groups. Produces a dated test report and recommendations without changing product skills.
-license: MIT
-metadata:
-  author: AzVerify
-  version: "1.0"
-  project: AzVerify
----
+# Azure skill functional tests
 
-Run an end-to-end functional test pass for the AzVerify skills in this repository. This skill records failures and recommendations; it does **not** implement fixes to the skills under test.
+Maintainer-only, opt-in integration tests for the seven AzVerify skills. This is a test procedure, not an automatically discovered skill or a normal user workflow. Read the [required test environment](../README.md#maintainer-tests) before running it. The manually selected [functional-testing agent](../.github/agents/azv-functional-testing.agent.md) uses this procedure.
+
+Run an end-to-end functional test pass only after the user explicitly authorizes the test subscription and resource groups. Record failures and recommendations; do **not** implement fixes to the skills under test.
 
 ## Scope and safety
 
@@ -26,7 +20,7 @@ Only use the user-designated test resource groups `AzVerify1` and `AzVerify2`. V
 
 This test pass creates or reuses one tagged `Standard_LRS` storage account in `AzVerify1`. It does not write data to the account. The account is left in place for later runs; storage and transaction charges may still apply. A temporary deny-policy assignment is created only in `AzVerify2` by `scripts/Test-PolicyRestrictions.ps1`; that script removes it in `finally`. Never leave that assignment in place. Do not delete the storage account or any other Azure resource as part of the ordinary test run.
 
-Use the test Bicep template in `assets/test-storage.bicep`; do not deploy the example architectures, which may contain costly services. No Azure resource deployment is part of the drift or policy checks. Never choose a resolution that changes production Azure or removes test data.
+Paths in commands are relative to the repository root. Use the test Bicep template in `test/assets/test-storage.bicep`; do not deploy the example architectures, which may contain costly services. No Azure resource deployment is part of the drift or policy checks. Never choose a resolution that changes production Azure or removes test data.
 
 ## Prerequisites and capability checks
 
@@ -59,7 +53,7 @@ For each approved group, run `az group show` and `az resource list`. Use only th
 Before creating anything:
 
 1. If the account exists in `AzVerify1`, verify its `azverifyFunctionalTest=true` tag and expected test configuration. Reuse it only if it is the test fixture; otherwise stop and report the collision.
-2. If it does not exist, run `az storage account check-name`, then `az deployment group validate` using `assets/test-storage.bicep`.
+2. If it does not exist, run `az storage account check-name`, then `az deployment group validate` using `test/assets/test-storage.bicep`.
 3. Deploy the validated template once with `az deployment group create`. Record the resource ID in the report, but mask the subscription ID.
 4. Verify the account through `az resource list` and `az storage account show`. Keep it at `accessTier=Hot`, TLS 1.2, HTTPS-only, blob public access disabled, and public network access disabled.
 
@@ -73,11 +67,11 @@ pwsh .github/skills/shared/scripts/Get-AzureResourceModel.ps1 `
   -OutFile <temporary-output>/azure-model.json
 ```
 
-Confirm the storage resource is present, its deployable configuration is in `deployableProperties`, and the Bicep-generation input does not copy secret values or serialize the raw ARM `properties` bag. Generate a small modular Bicep output from the extracted state in a new, non-colliding test output folder. Run `az bicep build` on the entry point and modules, compile the `.bicepparam`, and run `az deployment group validate` against `AzVerify1`; do not deploy the generated output. Record unavailable Azure best-practice/schema MCP checks and any permitted CLI/reference fallback.
+Confirm the storage resource is present, its deployable configuration is in `deployableProperties`, and the Bicep-generation input does not copy secret values or serialize the raw ARM `properties` bag. Generate a small modular Bicep output in a new, non-colliding solution folder under `test/artifacts/<run-id>/`. Run `az bicep build` on the entry point and modules, compile the `.bicepparam`, and run `az deployment group validate` against `AzVerify1`; do not deploy the generated output. Record unavailable Azure best-practice/schema MCP checks and any permitted CLI/reference fallback.
 
 ### 4. Test `azv-azure-to-diagram`
 
-Use `AzVerify1` as the resource-group input. Discover/enrich resources using the shared script, apply `Select-AzureResources.ps1 -Mode diagram`, then generate the diagram and `original-request.md` in a unique solution folder. Use the Draw.io MCP when available; otherwise use only the skill's documented direct-file fallback and note the missing visual validation.
+Use `AzVerify1` as the resource-group input. Discover/enrich resources using the shared script, apply `Select-AzureResources.ps1 -Mode diagram`, then generate the diagram and `original-request.md` in a unique solution folder under `test/artifacts/<run-id>/`. Use the Draw.io MCP when available; otherwise use only the skill's documented direct-file fallback and note the missing visual validation.
 
 Parse the resulting diagram with `ConvertFrom-DrawioDiagram.ps1`. Assert that the test storage account is represented exactly once with type `Microsoft.Storage/storageAccounts`, and that its resource-group containment is represented. Do not leave intermediate resource-model JSON behind.
 
@@ -109,7 +103,7 @@ If the skill promises defaults but the shared mapping has no default values, rec
 Run the policy probe as one script invocation:
 
 ```powershell
-pwsh .github/skills/azv-functional-testing/scripts/Test-PolicyRestrictions.ps1 `
+pwsh test/scripts/Test-PolicyRestrictions.ps1 `
   -SubscriptionId <subscription-id> -ResourceGroup AzVerify2
 ```
 
@@ -125,7 +119,7 @@ When Draw.io MCP is unavailable, mark diagram generation **BLOCKED**. The pre-ex
 
 ### 10. Report and cleanup
 
-Write `docs/functional-test-report-YYYY-MM-DD.md` with:
+Write `test/reports/functional-test-report-YYYY-MM-DD.md` with the following sections. Use a unique run suffix if a report for that date already exists; do not overwrite prior evidence.
 
 - Environment and the exact test resource group names.
 - Every one of the seven skills, each test performed, result (`PASS`, `PARTIAL`, `FAIL`, or `BLOCKED`), and evidence.

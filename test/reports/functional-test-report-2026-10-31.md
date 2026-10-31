@@ -10,7 +10,7 @@
 | Skill | Status | Test performed | Result |
 |---|---|---|---|
 | `azv-azure-to-bicep` | **PASS** | Auth, live discovery, enriched extraction, read-only stripping, Bicep build and ARM validation | Discovered and enriched one tagged storage account. Confirmed deployable values are available separately from the raw ARM properties. Generated test Bicep validated without deployment. |
-| `azv-azure-to-diagram` | **PARTIAL** | Live discovery, filtering, diagram output, then parse-back | Produced `azverify1/azverify1.drawio` and `original-request.md`. The parser recognized the resource-group container and storage account. Draw.io MCP/visual validation was unavailable; the skill's direct-file fallback was used. |
+| `azv-azure-to-diagram` | **PARTIAL** | Live discovery, filtering, diagram output, then parse-back | Produced `test/artifacts/2026-10-31/azverify1/azverify1.drawio` and `original-request.md`. The parser recognized the resource-group container and storage account. Draw.io MCP/visual validation was unavailable; the skill's direct-file fallback was used. |
 | `azv-bicep-drift-detection` | **PASS** | Azure fast path baseline, reversible access-tier drift, and restored baseline | Baseline reported `COMPLETE`, one `No Change`; Hot→Cool reported one `Modify` for `accessTier`; after restoring Hot, the generated modular template reported `COMPLETE`, one `No Change`. |
 | `azv-bicep-policy-check` | **FAIL** | API check against a temporary deny assignment, cross-checked with non-deploying ARM validation | ARM validation returned `RequestDisallowedByPolicy`, but `checkPolicyRestrictions` returned no evaluations or field restrictions. The skill's empty-result rule would classify this resource as compliant. The test helper exited non-zero as intended and removed the temporary assignment. |
 | `azv-diagram-drift-detection` | **FAIL** | Quick and deep comparisons of a parsed diagram with the live resource group; explicit-property comparison control | Quick mode reported the diagram's resource-group container as `Diagram Only`, although the storage account matched. Deep mode returned `No Comparable Properties` (0 compared) for the matched storage account. An explicit synthetic `accessTier` expectation did produce the expected property drift. |
@@ -34,7 +34,7 @@ Ran `.github/skills/shared/scripts/Invoke-Fixtures.ps1` against all four example
 
 **Affected:** `.github/skills/azv-bicep-policy-check/SKILL.md`, step 5a (line 231).
 **Evidence:** A temporary `Allowed locations` deny assignment in `AzVerify2` allowed only `northeurope`. A hypothetical `swedencentral` storage account was rejected by `az deployment group validate` with `RequestDisallowedByPolicy`. The documented `checkPolicyRestrictions` call returned `policyEvaluations=[]` and `fieldRestrictions=[]`; the same result occurred with explicit pending fields and with resource-group and subscription endpoints. The skill says empty evaluations mean compliant, which would produce a false pass.
-**Suggested fix:** Treat empty policy API results as inconclusive when an applicable assignment is known. Investigate/validate the request and scope against the API contract, and fall back to another pre-deployment evaluation path rather than declaring compliance. The regression probe is `.github/skills/azv-functional-testing/scripts/Test-PolicyRestrictions.ps1`.
+**Suggested fix:** Treat empty policy API results as inconclusive when an applicable assignment is known. Investigate/validate the request and scope against the API contract, and fall back to another pre-deployment evaluation path rather than declaring compliance. The regression probe is `test/scripts/Test-PolicyRestrictions.ps1`.
 
 ### 2. MEDIUM — Diagram resource-group containers appear as Azure drift
 
@@ -59,7 +59,8 @@ Ran `.github/skills/shared/scripts/Invoke-Fixtures.ps1` against all four example
 
 ## Retained test artifacts
 
-- `.github/skills/azv-functional-testing/SKILL.md` — repeatable seven-skill procedure.
-- `.github/skills/azv-functional-testing/assets/test-storage.bicep` — low-cost fixture template.
-- `.github/skills/azv-functional-testing/scripts/Test-PolicyRestrictions.ps1` — temporary-policy regression probe with cleanup.
-- `azverify1/` — parse-checked diagram, generated Bicep/parameters, original-request record, and validation README.
+- `test/functional-testing.md` — repeatable seven-skill test procedure, moved out of skill discovery after the first run.
+- `.github/agents/azv-functional-testing.agent.md` — manually invoked maintainer test agent that reads the procedure.
+- `test/assets/test-storage.bicep` — low-cost fixture template.
+- `test/scripts/Test-PolicyRestrictions.ps1` — temporary-policy regression probe with cleanup.
+- `test/artifacts/2026-10-31/azverify1/` — parse-checked diagram, generated Bicep/parameters, original-request record, and validation README.

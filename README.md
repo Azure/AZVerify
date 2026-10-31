@@ -68,6 +68,19 @@ The [examples/](examples/) folder contains inputs and generated outputs—Draw.i
 
 ## Contributing
 
+### Maintainer tests
+
+The [`test/`](test/) folder contains an [opt-in functional test procedure](test/functional-testing.md), fixture assets, a policy regression script, and retained reports/artifacts. These are maintainer integration tests, **not a product skill or a normal user workflow**. They make Azure changes and should not be run against production or a general-purpose subscription.
+
+To run them, provide:
+
+- A dedicated Azure test subscription with existing resource groups named **`AzVerify1` and `AzVerify2`** in **`swedencentral`**, initially empty or containing only the verified tagged test fixture. The current policy probe allows only `northeurope`, so the tested resource must be in a different region. Existing policy assignments must not interfere with the baseline.
+- An authenticated Azure CLI identity authorized to read both groups, create/validate deployments, create and update the storage fixture, read built-in policy definitions, call Policy Insights `checkPolicyRestrictions`, and create/delete resource-group policy assignments. Contributor alone does not grant policy-assignment management; Resource Policy Contributor or equivalent permissions are also required at the test scope.
+- PowerShell 7, Azure CLI, and Bicep CLI; GitHub Copilot with workspace custom-agent support; and the Draw.io and Bicep/Azure best-practice/schema MCP integrations required by the skills for full coverage. Missing integrations must be reported as PARTIAL or BLOCKED where applicable, not silently counted as passing.
+- Explicit authorization for the chosen subscription and both groups, including storage creation, reversible Hot/Cool tier changes, and a temporary deny-policy assignment in `AzVerify2`. Budget for any Azure charges: the empty, tagged `Standard_LRS` storage fixture is intentionally retained for later runs; the temporary policy must be removed and the tier restored to Hot.
+
+Only after preparing that environment, manually select the [`azv-functional-testing` custom agent](.github/agents/azv-functional-testing.agent.md) in Copilot and explicitly authorize the run with your subscription ID. Automatic model invocation is disabled. The agent follows `test/functional-testing.md`, records failures and suggested fixes without changing product skills, and writes reports to `test/reports/` and generated outputs to `test/artifacts/<run-id>/`. The [first run report](test/reports/functional-test-report-2026-10-31.md) documents the observed limitations; retained parameter files are environment-specific and must not be deployed unchanged elsewhere.
+
 This project welcomes contributions and suggestions.  Most contributions require you to agree to a
 Contributor License Agreement (CLA) declaring that you have the right to, and actually do, grant us
 the rights to use your contribution. For details, visit [Contributor License Agreements](https://cla.opensource.microsoft.com).

@@ -1,6 +1,6 @@
 # AzVerify1 Functional-Test Artifacts
 
-**Source:** Live `AzVerify1` resource group and `azverify1/azverify1.drawio`
+**Source:** Live `AzVerify1` resource group and `test/artifacts/2026-10-31/azverify1/azverify1.drawio`
 **Generated:** 2026-10-31
 
 ## Pre-deployment verification
@@ -26,7 +26,9 @@
 
 ## Deploy
 
-Review the parameters and target before deploying:
+These are environment-specific maintainer test outputs, not deployment instructions for normal users. See the [required test environment](../../../../README.md#maintainer-tests). The ordinary test procedure validates this template without deploying it.
+
+If separately authorized to deploy, run from this artifact folder after reviewing the parameters and target:
 
 ```bash
 az deployment group create \
