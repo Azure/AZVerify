@@ -90,6 +90,7 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
 . "$PSScriptRoot/_Common.ps1"
+. "$PSScriptRoot/_ResourceProjection.ps1"
 
 $propertyConfigPath = Resolve-Path -Path (Join-Path $PSScriptRoot '../data/azure-property-paths.json') -ErrorAction Stop
 $propertyConfig = Get-Content -LiteralPath $propertyConfigPath -Raw | ConvertFrom-Json
@@ -775,6 +776,9 @@ try {
             kind = if ($detailPropertyNames -contains 'kind') { [string]$details.kind } else { $null }
             identity = $identity
             relationships = @()
+        }
+        if ($isEnriching) {
+            $modelResource['comparisonProperties'] = Get-TrackedProperty -Resource $details -Configuration $propertyConfig
         }
 
         # Mask secrets in the raw discovery bag before it can be written to disk, but only

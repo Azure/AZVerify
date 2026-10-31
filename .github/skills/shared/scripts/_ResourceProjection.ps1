@@ -108,8 +108,10 @@ function Get-TrackedProperty {
         }
     }
     $result = @{}
+    $locationIsExplicit = Get-ModelMember $Resource 'locationIsExplicit'
     foreach ($name in $rules.Keys) {
         if ($PSBoundParameters.ContainsKey('PropertyName') -and $name -notin $PropertyName) { continue }
+        if ($name -eq 'location' -and $null -ne $locationIsExplicit -and -not [bool]$locationIsExplicit) { continue }
         $path = [string]$rules[$name]
         $value = $null
         if ($path -like 'composite:*') {

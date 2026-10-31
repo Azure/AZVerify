@@ -37,6 +37,7 @@ try {
     $vmWithAnnotation = $model.resources | Where-Object id -eq 'vm-01'
     $vmWithBaseline = $model.resources | Where-Object id -eq 'vm-02'
     $vmWithoutExpectations = $model.resources | Where-Object id -eq 'vm-03'
+    $vmWithWrapperMetadata = $model.resources | Where-Object id -eq 'vm-04'
 
     Assert-Equal 'Standard_D4s_v5' $vmWithAnnotation.properties.vmSize 'Annotation must override the selected baseline'
     Assert-Equal 'StandardSSD_LRS' $vmWithAnnotation.properties.osDiskType 'Baseline-only properties must be retained'
@@ -52,6 +53,8 @@ try {
     Assert-Equal 0 @($vmWithoutExpectations.properties.PSObject.Properties).Count 'Unconfigured resources must retain their existing empty configuration bag'
     Assert-Equal 'Standard_D4s_v5' $vmWithAnnotation.comparisonProperties.vmSize 'The explicit comparison model must contain annotations'
     Assert-Equal 0 @($vmWithoutExpectations.comparisonProperties.PSObject.Properties).Count 'Unconfigured resources must have no expected comparison properties'
+    Assert-Equal 'vm-wrapper' $vmWithWrapperMetadata.name 'A wrapper label must be used when the inner cell has no value'
+    Assert-Equal 'vm-04' $vmWithWrapperMetadata.id 'A wrapper ID must be used when the inner cell has no ID'
 
     $actualPath = Join-Path $outputDirectory 'azure-model.json'
     $comparisonPath = Join-Path $outputDirectory 'comparison.json'

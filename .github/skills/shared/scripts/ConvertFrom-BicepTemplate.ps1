@@ -339,6 +339,7 @@ function Add-ArmResourceModel {
                     parent        = $ParentSymbolicName
                     resourceGroup = $iterationScope.ResourceGroupName
                     location      = (ConvertTo-ArmPlainValue $location)
+                    locationIsExplicit = $definition.Contains('location')
                     properties    = if ($null -ne $properties) { ConvertTo-ArmPlainValue $properties } else { @{} }
                     tags          = if ($null -ne $tags) { ConvertTo-ArmPlainValue $tags } else { @{} }
                     sku           = if ($definition.Contains('sku')) { ConvertTo-ArmPlainValue (Resolve-ArmValue $definition['sku'] $iterationScope) } else { @{} }

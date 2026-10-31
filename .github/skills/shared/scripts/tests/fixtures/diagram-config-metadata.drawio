@@ -8,6 +8,9 @@
         <object id="vm-01" label="vm-test" azverifyProperties="{&quot;vmSize&quot;:&quot;Standard_D4s_v5&quot;,&quot;osType&quot;:&quot;Linux&quot;}">
           <mxCell id="vm-01" style="image=img/lib/azure2/compute/Virtual_Machine.svg;" vertex="1" parent="rg-test"/>
         </object>
+        <object id="vm-04" label="vm-wrapper">
+          <mxCell style="image=img/lib/azure2/compute/Virtual_Machine.svg;" vertex="1" parent="rg-test"/>
+        </object>
         <mxCell id="vm-02" value="vm-unconfigured" azverifyProperties="{&quot;enableBootDiagnostics&quot;:false}" style="image=img/lib/azure2/compute/Virtual_Machine.svg;" vertex="1" parent="rg-test"/>
       </root>
     </mxGraphModel>

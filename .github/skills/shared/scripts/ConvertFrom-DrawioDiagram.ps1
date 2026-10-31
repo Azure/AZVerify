@@ -162,17 +162,19 @@ function Get-CellMetadataAttribute {
         [string]$Name
     )
 
-    if ($Cell.HasAttribute($Name)) {
+    if ($Cell.HasAttribute($Name) -and -not [string]::IsNullOrWhiteSpace($Cell.GetAttribute($Name))) {
         return $Cell.GetAttribute($Name)
     }
 
     $wrapper = $Cell.ParentNode
-    if ($wrapper -is [System.Xml.XmlElement] -and
-        $wrapper.LocalName -in @('object', 'UserObject') -and
-        $wrapper.HasAttribute($Name)) {
-        return $wrapper.GetAttribute($Name)
+    if ($wrapper -is [System.Xml.XmlElement] -and $wrapper.LocalName -in @('object', 'UserObject')) {
+        $wrapperAttribute = if ($Name -eq 'value') { 'label' } else { $Name }
+        if ($wrapper.HasAttribute($wrapperAttribute)) {
+            return $wrapper.GetAttribute($wrapperAttribute)
+        }
     }
 
+    if ($Cell.HasAttribute($Name)) { return $Cell.GetAttribute($Name) }
     ''
 }
 
@@ -385,7 +387,7 @@ try {
     $cells = @($diagramXml.SelectNodes('//*[local-name()="mxCell"]'))
     $cellById = @{}
     foreach ($cell in $cells) {
-        $cellId = $cell.GetAttribute('id')
+        $cellId = Get-CellMetadataAttribute -Cell $cell -Name 'id'
         if ($cellId) { $cellById[$cellId] = $cell }
     }
 
@@ -394,11 +396,11 @@ try {
     $parentByResourceId = @{}
 
     foreach ($cell in $cells) {
-        $id = Get-AttributeValue -Node $cell -Name 'id'
+        $id = Get-CellMetadataAttribute -Cell $cell -Name 'id'
         $style = Get-AttributeValue -Node $cell -Name 'style'
         $edge = Get-AttributeValue -Node $cell -Name 'edge'
         $parent = Get-AttributeValue -Node $cell -Name 'parent'
-        $value = Get-AttributeValue -Node $cell -Name 'value'
+        $value = Get-CellMetadataAttribute -Cell $cell -Name 'value'
         $imagePath = $null
 
         if ($style -and $style -match 'image=([^;]+)') {
@@ -469,7 +471,7 @@ try {
             if ($containerCell) {
                 $containerName = Get-NormalizedName -Value (Get-AttributeValue -Node $containerCell -Name 'value')
                 if ([string]::IsNullOrWhiteSpace($containerName)) {
-                    $containerName = (Get-AttributeValue -Node $containerCell -Name 'id')
+                    $containerName = (Get-CellMetadataAttribute -Cell $containerCell -Name 'id')
                 }
 
                 $resource.properties.containerName = $containerName

@@ -462,6 +462,66 @@ try {
     $unknown429 = @($actual.resources | Where-Object { $_.name -eq 'vm-429' })[0].comparisonProperties
     Assert-True (@($unknown429.PSObject.Properties | Where-Object { $_.Value -eq 'unknown' }).Count -gt 0) '429 marks each tracked property unknown'
 
+    $scopeLocationTemplatePath = Join-Path $workRoot 'scope-location-template.json'
+    Write-JsonFile @{
+        '$schema' = 'https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#'
+        contentVersion = '1.0.0.0'
+        parameters = @{}
+        resources = @(@{
+            type = 'Microsoft.Compute/virtualMachines'; apiVersion = '2024-01-01'
+            name = 'scope-location-vm'; properties = @{}
+        })
+    } $scopeLocationTemplatePath
+    $global:compiledTemplatePath = $scopeLocationTemplatePath
+    $scopeLocationBicep = Join-Path $workRoot 'scope-location.bicep'
+    Set-Content -LiteralPath $scopeLocationBicep -Value "resource vm 'Microsoft.Compute/virtualMachines@2024-01-01' = { name: 'scope-location-vm'; properties: {} }" -Encoding utf8
+    $scopeLocationExpectedPath = Join-Path $workRoot 'scope-location-expected.json'
+    & (Join-Path $shared 'ConvertFrom-BicepTemplate.ps1') -BicepFile $scopeLocationBicep -SubscriptionId $subscriptionId `
+        -ResourceGroup $resourceGroup -Location 'eastus' -OutFile $scopeLocationExpectedPath
+    Assert-Equal $LASTEXITCODE 0 'Bicep resource without an explicit location parses'
+    $scopeLocationExpected = Read-JsonFile $scopeLocationExpectedPath
+    Assert-Equal $scopeLocationExpected.resources[0].location 'eastus' 'Missing Bicep location retains deployment-scope metadata'
+    Assert-Equal $scopeLocationExpected.resources[0].locationIsExplicit $false 'Inherited deployment location is marked non-explicit'
+    $scopeLocationActualPath = Join-Path $workRoot 'scope-location-actual.json'
+    $scopeLocationActual = @{
+        resources = @(@{
+            id = $scopeLocationExpected.resources[0].id; name = 'scope-location-vm'
+            type = 'Microsoft.Compute/virtualMachines'; resourceGroup = $resourceGroup
+            location = $null; properties = @{}
+        })
+    }
+    Write-JsonFile $scopeLocationActual $scopeLocationActualPath
+    $scopeLocationComparisonPath = Join-Path $workRoot 'scope-location-comparison.json'
+    & (Join-Path $shared 'Compare-ResourceModels.ps1') -ModelA $scopeLocationExpectedPath -ModelB $scopeLocationActualPath `
+        -AzureIdentity -TrackedProperties -OutFile $scopeLocationComparisonPath
+    Assert-Equal (Read-JsonFile $scopeLocationComparisonPath).matches[0].propertyComparison.status `
+        'No Comparable Properties' 'Inherited deployment location is not compared as an explicit expectation'
+    $global:compiledTemplatePath = Join-Path $workRoot 'compiled-arm-template.json'
+
+    $enrichedInputPath = Join-Path $workRoot 'enriched-input.json'
+    $enrichedResource = @{
+        id = New-ResourceId 'Microsoft.Compute/virtualMachines' 'zone-vm'
+        name = 'zone-vm'; type = 'Microsoft.Compute/virtualMachines'; resourceGroup = $resourceGroup
+        location = 'eastus'; zones = @('1'); properties = @{ hardwareProfile = @{ vmSize = 'Standard_B2s' } }
+    }
+    Write-JsonFile @($enrichedResource) $enrichedInputPath
+    $enrichedOutputPath = Join-Path $workRoot 'enriched-model.json'
+    & (Join-Path $shared 'Get-AzureResourceModel.ps1') -FromJson $enrichedInputPath -Enrich -OutFile $enrichedOutputPath
+    Assert-Equal $LASTEXITCODE 0 'Offline enriched model generation'
+    $enrichedActual = Read-JsonFile $enrichedOutputPath
+    Assert-Equal $enrichedActual.resources[0].properties.availabilityZone '1' 'Legacy enrichment retains flattened availability zone'
+    Assert-Equal $enrichedActual.resources[0].comparisonProperties.availabilityZone '1' 'Legacy enrichment emits canonical comparison properties'
+    $enrichedExpectedPath = Join-Path $workRoot 'enriched-expected.json'
+    Write-JsonFile @{ resources = @(@{
+        id = $enrichedResource.id; name = 'zone-vm'; type = $enrichedResource.type
+        resourceGroup = $resourceGroup; properties = @{}; comparisonProperties = @{ availabilityZone = '1' }
+    }) } $enrichedExpectedPath
+    $enrichedComparisonPath = Join-Path $workRoot 'enriched-comparison.json'
+    & (Join-Path $shared 'Compare-ResourceModels.ps1') -ModelA $enrichedExpectedPath -ModelB $enrichedOutputPath `
+        -LabelA Diagram -LabelB Azure -CompareProperties -OutFile $enrichedComparisonPath
+    Assert-Equal (Read-JsonFile $enrichedComparisonPath).matches[0].propertyComparison.status `
+        'All Properties Match' 'Deep comparison uses canonical values from legacy enriched discovery'
+
     $nestedModelA = Join-Path $workRoot 'nested-a.json'
     $nestedModelB = Join-Path $workRoot 'nested-b.json'
     $nestedComparison = Join-Path $workRoot 'nested-comparison.json'
