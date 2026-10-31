@@ -135,8 +135,7 @@ class ArmExpressionParser {
     }
 }
 
-$script:ArmAstCache = @{}
-$script:ArmDeploymentOutputCache = @{}
+$script:ArmAstCache = [System.Collections.Generic.Dictionary[string,object]]::new([System.StringComparer]::Ordinal)
 
 function Get-ArmExpressionAst {
     param([string]$Expression)
@@ -216,12 +215,34 @@ function Test-ArmEqual {
     if ($null -eq $Left -and $null -eq $Right) { return $true }
     if ($null -eq $Left -or $null -eq $Right) { return $false }
     if ($Left -is [string] -and $Right -is [string]) {
-        return [string]::Equals($Left, $Right, [System.StringComparison]::OrdinalIgnoreCase)
+        return [string]::Equals($Left, $Right, [System.StringComparison]::Ordinal)
+    }
+    if ($Left -is [System.Collections.IDictionary] -and $Right -is [System.Collections.IDictionary]) {
+        if ($Left.Count -ne $Right.Count) { return $false }
+        foreach ($key in $Left.Keys) {
+            # Unlike contains(object, key), equality compares property names case-sensitively.
+            $matchingKey = $null
+            foreach ($candidate in $Right.Keys) {
+                if ([string]::Equals([string]$key, [string]$candidate, [System.StringComparison]::Ordinal)) {
+                    $matchingKey = $candidate
+                    break
+                }
+            }
+            if ($null -eq $matchingKey -or -not (Test-ArmEqual $Left[$key] $Right[$matchingKey])) { return $false }
+        }
+        return $true
+    }
+    if ((Test-ArmList $Left) -and (Test-ArmList $Right)) {
+        if ($Left.Count -ne $Right.Count) { return $false }
+        for ($i = 0; $i -lt $Left.Count; $i++) {
+            if (-not (Test-ArmEqual $Left[$i] $Right[$i])) { return $false }
+        }
+        return $true
     }
     if ($Left -is [System.ValueType] -and $Right -is [System.ValueType] -and $Left -isnot [bool] -and $Right -isnot [bool]) {
         return [double]$Left -eq [double]$Right
     }
-    (ConvertTo-Json -InputObject $Left -Depth 30 -Compress) -eq (ConvertTo-Json -InputObject $Right -Depth 30 -Compress)
+    (ConvertTo-Json -InputObject $Left -Depth 30 -Compress) -ceq (ConvertTo-Json -InputObject $Right -Depth 30 -Compress)
 }
 
 function Test-ArmEmpty {
@@ -329,6 +350,7 @@ function New-ArmScope {
         Params            = @{}
         Vars              = $variables
         VarCache          = @{}
+        DeploymentOutputCache = @{}
         Functions         = (Get-ArmFunctionTable $Template)
         Symbols           = (Get-ArmSymbolTable $Template)
         SubscriptionId    = $SubscriptionId
@@ -454,8 +476,8 @@ function Get-ArmVariable {
 function Get-ArmDeploymentOutputs {
     param([hashtable]$Scope, [string]$Symbol)
 
-    $cacheKey = "$($Scope.Path)|$Symbol"
-    if ($script:ArmDeploymentOutputCache.ContainsKey($cacheKey)) { return , $script:ArmDeploymentOutputCache[$cacheKey] }
+    $cache = $Scope.Root.DeploymentOutputCache
+    if ($cache.ContainsKey($Symbol)) { return , $cache[$Symbol] }
 
     $definition = $Scope.Symbols[$Symbol]
     if ($definition.Contains('copy')) { return [ArmUnresolved]::new("reference to looped module $Symbol") }
@@ -470,7 +492,7 @@ function Get-ArmDeploymentOutputs {
         }
     }
     $result = [ordered]@{ outputs = $outputs }
-    $script:ArmDeploymentOutputCache[$cacheKey] = $result
+    $cache[$Symbol] = $result
     , $result
 }
 
@@ -736,7 +758,7 @@ function Invoke-ArmFunction {
         'empty' { return (Test-ArmEmpty $values[0]) }
         'contains' {
             $container = $values[0]
-            if ($container -is [string]) { return $container.IndexOf([string]$values[1], [System.StringComparison]::OrdinalIgnoreCase) -ge 0 }
+            if ($container -is [string]) { return $container.IndexOf([string]$values[1], [System.StringComparison]::Ordinal) -ge 0 }
             if ($container -is [System.Collections.IDictionary]) { return ($null -ne (Find-ArmKey $container ([string]$values[1]))) }
             foreach ($item in @($container)) { if (Test-ArmEqual $item $values[1]) { return $true } }
             return $false

@@ -34,7 +34,7 @@ function Get-ExpectedAzureModel {
     [CmdletBinding()]
     param(
         [Parameter(Mandatory)][string]$ExpectedModel,
-        [Parameter(Mandatory)][string]$ResourceGroup,
+        [string]$ResourceGroup,
         [Parameter(Mandatory)][string]$SubscriptionId,
         [string]$ManagementEndpoint = 'https://management.azure.com/',
         [ValidateRange(1, 16)][int]$ThrottleLimit = 4,
@@ -46,9 +46,11 @@ function Get-ExpectedAzureModel {
     $timer = [System.Diagnostics.Stopwatch]::StartNew()
     $config = Get-Content -LiteralPath (Join-Path $PSScriptRoot '..\data\azure-property-paths.json') -Raw | ConvertFrom-Json
     $expected = Read-ResourceModel -InputFile $ExpectedModel
-    $inventory = @(Invoke-AzJson -Arguments @('resource', 'list', '--resource-group', $ResourceGroup, '--subscription', $SubscriptionId, '--output', 'json'))
+    $inventoryArguments = @('resource', 'list', '--subscription', $SubscriptionId, '--output', 'json')
+    if ($ResourceGroup) { $inventoryArguments += @('--resource-group', $ResourceGroup) }
+    $inventory = @(Invoke-AzJson -Arguments $inventoryArguments)
     $inventoryModel = @{ resources = @($inventory | ForEach-Object {
-        [pscustomobject]@{ id = $_.id; type = $_.type; name = $_.name; resourceGroup = $ResourceGroup; tags = $_.tags; properties = @{}; relationships = @() }
+        [pscustomobject]@{ id = $_.id; type = $_.type; name = $_.name; resourceGroup = if ($ResourceGroup) { $ResourceGroup } else { Get-ModelMember $_ 'resourceGroup' }; tags = $_.tags; properties = @{}; relationships = @(); existence = 'Found' }
     }) }
     $filterInput = Join-Path (Split-Path -Parent $ExpectedModel) ('inventory-' + [guid]::NewGuid().ToString('N') + '.json')
     $filterOutput = $filterInput + '.filtered'
@@ -72,7 +74,7 @@ function Get-ExpectedAzureModel {
     foreach ($resource in $expected.resources) {
         $id = [string]$resource.id
         if ((Test-ModelUnresolved $id) -or (Get-ModelMember $resource 'existenceUnknown')) { continue }
-        $properties = Get-TrackedProperty -Resource $resource -Configuration $config
+        $properties = Get-ComparisonProperty -Resource $resource -Configuration $config
         if ($actual.ContainsKey($id)) {
             $projected = Get-TrackedProperty -Resource $rawIndex[$id] -Configuration $config -PropertyName @($properties.Keys)
             $actual[$id] | Add-Member -NotePropertyName comparisonProperties -NotePropertyValue $projected
@@ -82,6 +84,12 @@ function Get-ExpectedAzureModel {
         $version = [string](Get-ModelMember $resource 'apiVersion')
         if (-not $version) {
             $issues.Add(@{ resourceId = $id; errorCode = 'MissingDeclaredApiVersion' })
+            if (-not $actual.ContainsKey($id)) {
+                $actual[$id] = [pscustomobject]@{
+                    id = $id; type = $resource.type; name = $resource.name
+                    resourceGroup = Get-ModelMember $resource 'resourceGroup'; properties = @{}; tags = @{}; relationships = @(); existence = 'Unknown'
+                }
+            }
             continue
         }
         $work.Add([pscustomobject]@{ id = $id; apiVersion = $version; resource = $resource; properties = @($properties.Keys) })
@@ -155,11 +163,15 @@ function Get-ExpectedAzureModel {
                 if (-not $actual.ContainsKey($item.id)) {
                     $actual[$item.id] = [pscustomobject]@{
                         id = $item.id; type = $item.resource.type; name = $item.resource.name
-                        resourceGroup = $ResourceGroup; properties = @{}; tags = @{}; relationships = @()
+                        resourceGroup = Get-ModelMember $item.resource 'resourceGroup'; properties = @{}; tags = @{}; relationships = @()
+                        existence = if ($response.status -eq 'Found') { 'Found' } else { 'Unknown' }
                     }
                 }
                 $actual[$item.id] | Add-Member -NotePropertyName comparisonProperties -NotePropertyValue $projected -Force
                 $actual[$item.id] | Add-Member -NotePropertyName discoveryStatus -NotePropertyValue $response.status -Force
+                if ($response.status -eq 'Found') {
+                    $actual[$item.id] | Add-Member -NotePropertyName existence -NotePropertyValue 'Found' -Force
+                }
             }
         }
         finally { $token = $null; $tokenDocument = $null }

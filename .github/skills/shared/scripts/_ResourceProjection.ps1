@@ -54,7 +54,7 @@ function ConvertTo-TrackedValue {
 
     if ($Value -is [System.Collections.IDictionary] -or $Value -is [pscustomobject]) {
         $result = [ordered]@{}
-        $names = if ($Value -is [System.Collections.IDictionary]) { @($Value.Keys) } else { @($Value.PSObject.Properties.Name) }
+        $names = if ($Value -is [System.Collections.IDictionary]) { @($Value.Keys) } else { @($Value.PSObject.Properties | ForEach-Object { $_.Name }) }
         $isChild = $names -contains 'properties' -and $names -contains 'name'
         foreach ($name in $names) {
             if ($name -in @('etag', 'provisioningState', 'resourceGuid')) { continue }
@@ -116,7 +116,7 @@ function Get-TrackedProperty {
             $composite = @($Configuration.compositeRules | Where-Object { $_.resourceType -eq $type -and $_.property -eq $name })
             if ($composite.Count -eq 1) {
                 $parts = @($composite[0].assembledFrom | ForEach-Object { Get-ModelPath $Resource $_ })
-                if ($parts.Count -eq $composite[0].assembledFrom.Count) { $value = $parts -join ':' }
+                if ($parts.Count -eq $composite[0].assembledFrom.Count -and @($parts | Where-Object { $null -eq $_ }).Count -eq 0) { $value = $parts -join ':' }
             }
         }
         elseif ($path -notmatch '^derived ') {
@@ -129,4 +129,42 @@ function Get-TrackedProperty {
         elseif ($PSBoundParameters.ContainsKey('PropertyName')) { $result[$name] = 'unknown' }
     }
     return $result
+}
+
+function Get-ComparisonProperty {
+    [CmdletBinding()]
+    param([Parameter(Mandatory)]$Resource, [Parameter(Mandatory)]$Configuration, [string[]]$PropertyName)
+
+    $projected = Get-ModelMember $Resource 'comparisonProperties'
+    if ($null -eq $projected) {
+        $arguments = @{ Resource = $Resource; Configuration = $Configuration }
+        if ($PSBoundParameters.ContainsKey('PropertyName')) { $arguments.PropertyName = $PropertyName }
+        return Get-TrackedProperty @arguments
+    }
+    $result = @{}
+    $names = if ($PSBoundParameters.ContainsKey('PropertyName')) { $PropertyName } elseif ($projected -is [System.Collections.IDictionary]) { @($projected.Keys) } else { @($projected.PSObject.Properties | ForEach-Object { $_.Name }) }
+    foreach ($name in $names) {
+        $value = Get-ModelMember $projected $name
+        $result[$name] = if ($null -eq $value) { 'unknown' } else { $value }
+    }
+    return $result
+}
+
+function Get-PropertyNormalization {
+    [CmdletBinding()]
+    param([Parameter(Mandatory)]$Configuration, [string]$ResourceType, [string]$PropertyName)
+
+    $normalization = 'exact'
+    foreach ($rule in $Configuration.globalSkuRules) {
+        if ($ResourceType -like $rule.resourceTypePattern -and $rule.property -eq $PropertyName -and $rule.PSObject.Properties['normalization']) {
+            $normalization = [string]$rule.normalization
+        }
+    }
+    foreach ($entry in $Configuration.resourceTypes) {
+        if ($entry.resourceType -ne $ResourceType) { continue }
+        foreach ($rule in $entry.properties) {
+            if ($rule.name -eq $PropertyName -and $rule.PSObject.Properties['normalization']) { $normalization = [string]$rule.normalization }
+        }
+    }
+    return $normalization
 }

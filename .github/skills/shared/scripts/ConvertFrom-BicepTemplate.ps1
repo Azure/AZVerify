@@ -18,6 +18,9 @@ Optional path to the .bicepparam parameter override file.
 resource properties. Defaults to 'standard'.
 .PARAMETER OutFile
 Optional path to write the JSON resource model. If omitted, output is written to stdout.
+.PARAMETER ResolveDeterministicNames
+Resolve uniqueString() and guid() with Bicep's evaluator, including names passed through
+module outputs. Evaluation caches are recreated for each deterministic naming pass.
 .OUTPUTS
 System.Management.Automation.PSCustomObject
 .NOTES
@@ -431,6 +434,7 @@ try {
         }
         $namingValues = @{}
         for ($pass = 0; $pass -lt 5; $pass++) {
+            # Fresh scope-local variable and module-output caches must not retain pending names.
             $rootScope = New-ArmScope -Template $template -SubscriptionId $scopeSubscriptionId -ResourceGroupName $resourceGroupName `
                 -Location $scopeLocation -Path '' -DeploymentName 'main' -SourceFile $sourceFile
             $rootScope.NamingValues = $namingValues

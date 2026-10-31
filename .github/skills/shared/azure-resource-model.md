@@ -43,6 +43,9 @@ Each Azure environment is represented as a **resource model** — a JSON structu
 | `resourceGroup` | string | No | Resource group the resource belongs to. |
 | `location` | string | No | Azure region (e.g., `eastus`, `westeurope`). |
 | `properties` | object | No | Resource-specific properties (SKU, tier, size, etc.). |
+| `comparisonProperties` | object | No | Canonical tracked expectations/actual values; distinct from raw ARM properties. Diagram values are constructed from explicit annotations and a selected baseline. |
+| `propertySources` | object | No | Per-expectation provenance: `annotation` or `selectedBaseline:<name>`. Never infer diagram expectations from retrieval defaults. |
+| `existence` | string | No | Discovery evidence: `Found`, `Absent`, or `Unknown`. Unknown entries are not evidence that a resource exists; confirmed absence may instead be omitted from the actual inventory. |
 | `deployableProperties` | object | No | Mapped, deployable resource settings. Bicep generation must use this field instead of the raw `properties` bag. |
 | `tags` | object | No | Azure resource tags as key-value pairs. |
 | `sku` | object | No | Deployable top-level SKU configuration from Azure. |

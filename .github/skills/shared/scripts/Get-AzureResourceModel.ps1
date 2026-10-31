@@ -579,8 +579,8 @@ function Invoke-AzJson {
 
 try {
     if ($ExpectedModel) {
-        if (-not $ResourceGroup -or -not $SubscriptionId -or $StripReadOnly) {
-            throw 'Expected-aware discovery requires explicit ResourceGroup and SubscriptionId and cannot be used with StripReadOnly.'
+        if (-not $SubscriptionId -or $StripReadOnly) {
+            throw 'Expected-aware discovery requires explicit SubscriptionId and Azure CLI authentication and cannot be used with StripReadOnly.'
         }
         . "$PSScriptRoot\_ExpectedAzureDiscovery.ps1"
         $discoveryParameters = @{

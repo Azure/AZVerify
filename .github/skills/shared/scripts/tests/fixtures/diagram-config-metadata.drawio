@@ -1,0 +1,24 @@
+<mxfile>
+  <diagram name="Configured architecture" id="configured" azverifyConfig="{&quot;version&quot;:1,&quot;selectedBaseline&quot;:&quot;development&quot;,&quot;baselines&quot;:{&quot;development&quot;:{&quot;resources&quot;:{&quot;Microsoft.Compute/virtualMachines&quot;:{&quot;enableBootDiagnostics&quot;:true},&quot;vm-01&quot;:{&quot;vmSize&quot;:&quot;Standard_B2s&quot;,&quot;osDiskType&quot;:&quot;StandardSSD_LRS&quot;}}}}}">
+    <mxGraphModel>
+      <root>
+        <mxCell id="0"/>
+        <mxCell id="1" parent="0"/>
+        <mxCell id="rg-test" value="rg-test" style="container=1;fillColor=#fff2cc;" vertex="1" parent="1"/>
+        <object id="vm-01" label="vm-test" azverifyProperties="{&quot;vmSize&quot;:&quot;Standard_D4s_v5&quot;,&quot;osType&quot;:&quot;Linux&quot;}">
+          <mxCell id="vm-01" style="image=img/lib/azure2/compute/Virtual_Machine.svg;" vertex="1" parent="rg-test"/>
+        </object>
+        <mxCell id="vm-02" value="vm-unconfigured" azverifyProperties="{&quot;enableBootDiagnostics&quot;:false}" style="image=img/lib/azure2/compute/Virtual_Machine.svg;" vertex="1" parent="rg-test"/>
+      </root>
+    </mxGraphModel>
+  </diagram>
+  <diagram name="Unconfigured architecture" id="unconfigured">
+    <mxGraphModel>
+      <root>
+        <mxCell id="0"/>
+        <mxCell id="1" parent="0"/>
+        <mxCell id="vm-03" value="vm-no-expectations" style="image=img/lib/azure2/compute/Virtual_Machine.svg;" vertex="1" parent="1"/>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

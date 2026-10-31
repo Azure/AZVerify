@@ -26,6 +26,57 @@ pwsh .github/skills/shared/scripts/ConvertFrom-DrawioDiagram.ps1 -DiagramPath <d
 - **stdout**: Single resource model JSON object conforming to `.github/skills/shared/azure-resource-model.md`
 - **stderr**: Diagnostics only
 
+## Diagram Configuration Metadata
+
+The parser reads optional configuration metadata embedded in Draw.io XML. This lets a
+diagram state expected values for deep drift comparison without treating visual labels
+or inferred Azure defaults as configuration.
+
+### Selected baseline
+
+Set `azverifyConfig` on a `<diagram>` element to a JSON object with `version: 1`,
+`selectedBaseline`, and a `baselines` object. The selected baseline must provide a
+`resources` object keyed by resource ID and/or Azure resource type:
+
+```xml
+<diagram name="Architecture" id="overview"
+  azverifyConfig="{&quot;version&quot;:1,&quot;selectedBaseline&quot;:&quot;development&quot;,&quot;baselines&quot;:{&quot;development&quot;:{&quot;resources&quot;:{&quot;vm-web&quot;:{&quot;vmSize&quot;:&quot;Standard_B2s&quot;},&quot;Microsoft.Storage/storageAccounts&quot;:{&quot;skuName&quot;:&quot;Standard_LRS&quot;}}}}}">
+```
+
+Resource-ID values take precedence over values keyed by resource type. A baseline can
+omit a resource or any property; omitted values are not expected and are not compared.
+The `azure-property-paths.json` file defines tracked properties and retrieval paths, not
+configuration defaults, so the parser does not invent fallback values.
+
+### Per-resource annotations
+
+Set `azverifyProperties` to a JSON object on the resource's `<mxCell>` or its Draw.io
+`<object>`/`<UserObject>` wrapper:
+
+```xml
+<object id="vm-web" label="vm-web"
+  azverifyProperties="{&quot;vmSize&quot;:&quot;Standard_D4s_v5&quot;,&quot;osType&quot;:&quot;Linux&quot;}">
+  <mxCell id="vm-web" style="image=...;" vertex="1" parent="1"/>
+</object>
+```
+
+Annotations override selected-baseline values for the same property. The emitted
+resource's `comparisonProperties` contains the resulting expected values (also retained
+in `properties` for existing consumers), while its optional
+`propertySources` map records each value as `annotation` or
+`selectedBaseline:<baseline-name>`. Existing containment metadata such as
+`properties.containerName` is preserved and is not configuration provenance.
+Property names must be tracked names defined for that resource type in
+`azure-property-paths.json`, including global SKU and location fields.
+Malformed JSON, unknown property names, unsupported metadata versions, and undefined selected baselines fail
+parsing rather than silently dropping expectations.
+
+Run the diagram-specific parser tests with:
+
+```powershell
+pwsh .github/skills/shared/scripts/tests/Test-ConvertFromDrawioDiagram.ps1
+```
+
 ## Exit Codes
 
 - `0` — parse succeeded
@@ -44,9 +95,10 @@ If `pwsh`/`powershell.exe` or the script cannot run, parse the diagram directly:
 1. Read the `.drawio` file as XML and load `.github/skills/shared/azure-stencil-mapping.json`.
 2. For each `<mxCell>` whose `style` contains an `image=...` value, reverse-look-up the image path in the stencil mapping to resolve the Azure resource `type`; use the cell `value` as the `name`.
 3. Skip any cell whose `id` ends with `-icon`; these are decorative icon overlays, not distinct resources.
-4. Treat container cells (VNet, subnet, resource group shapes) as parents; a cell whose `parent` is another resource cell gets a `contains` relationship from that parent.
-5. Classify each `<mxCell edge="1">` element as a relationship between its `source` and `target` cells. Determine the relationship type from the cell's `style` attribute: `strokeColor=#0078D4` → `connects`; `strokeColor=#E81123` → `secures`; `strokeColor=#00A4EF` → `peers`; `strokeColor=#999999` with `dashed=1` → `depends`. Default to `connects` when no recognized style is present.
-6. Emit a resource model JSON conforming to `.github/skills/shared/azure-resource-model.md`. Skip cells with no stencil match.
+4. Read `azverifyConfig` and `azverifyProperties` metadata per the contract above. Merge the selected baseline values with per-resource annotations (annotations win), and record the property source. Do not invent expected values for absent metadata.
+5. Treat container cells (VNet, subnet, resource group shapes) as parents; a cell whose `parent` is another resource cell gets a `contains` relationship from that parent.
+6. Classify each `<mxCell edge="1">` element as a relationship between its `source` and `target` cells. Determine the relationship type from the cell's `style` attribute: `strokeColor=#0078D4` → `connects`; `strokeColor=#E81123` → `secures`; `strokeColor=#00A4EF` → `peers`; `strokeColor=#999999` with `dashed=1` → `depends`. Default to `connects` when no recognized style is present.
+7. Emit a resource model JSON conforming to `.github/skills/shared/azure-resource-model.md`. Skip cells with no stencil match.
 
 ## Raw XML Editing — Diagram Save Fallback
 

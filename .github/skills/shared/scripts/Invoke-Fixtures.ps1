@@ -115,6 +115,9 @@ foreach ($fixture in $fixtures) {
                 if ($paramFile) {
                     $bicepArgs['ParamFile'] = $paramFile.FullName
                 }
+                if ($fixtureName -eq 'arm-module-deterministic-names') {
+                    $bicepArgs.ResolveDeterministicNames = $true
+                }
 
                 & (Join-Path -Path $scriptRoot -ChildPath 'ConvertFrom-BicepTemplate.ps1') @bicepArgs
 
@@ -141,7 +144,7 @@ foreach ($fixture in $fixtures) {
                     $actualNames = @($bicepModel.resources |
                             Where-Object { $_.type -ne 'Microsoft.Resources/deployments' } |
                             ForEach-Object { "$($_.type)|$($_.name)" })
-                    $nameDifferences = @(Compare-Object -ReferenceObject $expectedNames -DifferenceObject $actualNames |
+                    $nameDifferences = @(Compare-Object -ReferenceObject $expectedNames -DifferenceObject $actualNames -CaseSensitive |
                             ForEach-Object { "$($_.SideIndicator) $($_.InputObject)" })
                     Add-Result -Fixture $fixtureName -Test 'BicepTemplate-ExpectedNames' -Passed ($nameDifferences.Count -eq 0) `
                         -Detail ($nameDifferences -join '; ')
@@ -222,6 +225,23 @@ foreach ($fixture in $fixtures) {
                 Remove-Item -LiteralPath $tempFile -Force -ErrorAction SilentlyContinue
             }
         }
+    }
+}
+
+$regressionTests = @(
+    (Join-Path $scriptRoot 'Test-AzureRead.ps1'),
+    (Join-Path $scriptRoot 'tests/Test-ConvertFromDrawioDiagram.ps1'),
+    (Join-Path $repoRoot 'tests/Test-ArmCaseAndModuleNames.ps1'),
+    (Join-Path $repoRoot 'tests/Test-AzureDriftPipeline.ps1')
+)
+foreach ($testFile in $regressionTests) {
+    try {
+        & pwsh -NoProfile -File $testFile | ForEach-Object { Write-Diag ([string]$_) }
+        if ($LASTEXITCODE -ne 0) { throw "Regression script exited with code $LASTEXITCODE." }
+        Add-Result -Fixture 'regressions' -Test ([System.IO.Path]::GetFileNameWithoutExtension($testFile)) -Passed $true
+    }
+    catch {
+        Add-Result -Fixture 'regressions' -Test ([System.IO.Path]::GetFileNameWithoutExtension($testFile)) -Passed $false -Detail $_.Exception.Message
     }
 }
 
