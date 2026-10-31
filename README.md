@@ -72,7 +72,7 @@ The [examples/](examples/) folder contains inputs and generated outputs—Draw.i
 
 **When to run:** Run these functional tests before a pull request is merged, not after every change or commit. They take time, consume GitHub Copilot credits, and require the dedicated Azure test environment. Keep execution manual and opt-in rather than triggering the full suite on every edit or push.
 
-The [`test/`](test/) folder contains an [opt-in functional test procedure](test/functional-testing.md), fixture assets (baseline and complex), helper scripts, and retained reports/artifacts. These are maintainer integration tests, **not a product skill or a normal user workflow**. They make Azure changes and should not be run against production or a general-purpose subscription.
+The [`test/`](test/) folder contains an [opt-in functional test procedure](test/functional-testing.md), reusable fixture assets (baseline and complex), and helper scripts. Reports and generated artifacts are produced during test runs. These are maintainer integration tests, **not a product skill or a normal user workflow**. They make Azure changes and should not be run against production or a general-purpose subscription.
 
 To run them, provide:
 

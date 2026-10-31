@@ -1,3 +1,0 @@
-[AzVerify] Excluding resource 'azvft1-nic-0' because it matched an extra exclusion pattern.
-[AzVerify] Excluding resource 'azvft1-nic-1' because it matched an extra exclusion pattern.
-[AzVerify] Filtered 2 resource(s); returning 10 resource(s).
