@@ -39,13 +39,19 @@ With `-CompareProperties`, each matched entry (`In Sync` / `In Sync (name differ
   "status": "All Properties Match | Properties Drifted | Incomplete | No Comparable Properties",
   "comparedCount": 5,
   "driftCount": 1,
+  "coverage": {
+    "status": "Complete | Incomplete | Not Applicable",
+    "trackedCount": 8,
+    "specifiedCount": 2,
+    "notSpecifiedProperties": ["vmSize", "osDiskType"]
+  },
   "drifts": [
     { "property": "vmSize", "valueA": "Standard_B2s", "valueB": "Standard_D2s_v5", "severity": "standard" }
   ]
 }
 ```
 
-and the summary gains `resourcesWithPropertyDrift`, `propertyDriftCount`, `confirmedMatch`, `incompleteComparison`, `noComparableProperties`, and `unverified` counts. Each unverified resource is counted once, not once per property/read issue. `propertyComparison.uncertainties` records unavailable/unresolved values; diagram `propertySources` preserves annotation/baseline provenance.
+and the summary gains `resourcesWithPropertyDrift`, `propertyDriftCount`, `confirmedMatch`, `incompleteComparison`, `noComparableProperties`, and `unverified` counts. Each unverified resource is counted once, not once per property/read issue. `propertyComparison.uncertainties` records unavailable/unresolved values; `propertyComparison.coverage` reports how many configured tracked properties have explicit expectations and lists those not specified. Diagram `propertySources` preserves annotation/baseline provenance.
 
 Existence is independent of configuration: `Found` means inventory or a GET confirmed the resource, `Absent` requires confirmed absence, and `Unknown` means it could not be verified. An actual entry with unknown existence matches as `Unverified`, never `In Sync`. `All Properties Match` is the only configuration result that permits “No Change.” `Incomplete` takes precedence over confirmed drift for category counting; confirmed drifts remain in its details. `No Comparable Properties` is existence-only, not a configuration check.
 
@@ -57,6 +63,7 @@ Existence is independent of configuration: `Found` means inventory or a GET conf
 ## Notes
 
 - Diagram matching applies exact match, single-of-type match, substring/Levenshtein matching and child-resource context. Azure identity matching never uses these heuristics.
+- Deep comparison coverage is **Incomplete** when any configured tracked property lacks an explicit expectation (including when none are specified), and **Complete** only when every tracked property has an expectation. **Not Applicable** means the resource type has no tracked-property configuration. Unspecified properties are not drift.
 - **Property comparison semantics** (`-CompareProperties`): every property in a matched model-A resource is compared against the model-B value (keys only present in B are ignored — the expected model did not specify them; `parentId` and `containerName` are excluded as matching aids). Values are normalized before comparing:
   - Exact ordinal strings by default, including case and whitespace in usernames and other free text
   - Case-insensitive strings only where property metadata declares `normalization: "caseInsensitive"` (SKU names/tiers and selected enums)

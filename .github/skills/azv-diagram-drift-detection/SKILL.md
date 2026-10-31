@@ -137,7 +137,7 @@ pwsh .github/skills/shared/scripts/Compare-ResourceModels.ps1 -ModelA <work-dir>
 ```
 
 Use the emitted match report as the authoritative comparison result. Existence-level classifications: **In Sync**, **In Sync (name differs)**, **Diagram Only**, **Azure Only**.
-The comparator carries `propertySources` in each property comparison and uses the diagram's explicit `comparisonProperties` expectations. For the **Not specified — not assessed** coverage list, compare those keys with the tracked property names in `azure-property-paths.json`.
+The comparator carries `propertySources` and a `coverage` object in each property comparison. Use `coverage.notSpecifiedProperties` as the **Not specified — not assessed** list; `coverage.status` distinguishes **Complete**, **Incomplete**, and **Not Applicable** coverage. Deep mode must report `specifiedCount` of `trackedCount` and list the unassessed paths. Do not treat partial coverage as a complete configuration check.
 
 **Deep mode additions** — the report's `propertyComparison` object per matched resource gives:
 - Expected values supplied by the diagram model, and their provenance from its `propertySources` map (`annotation` or `selectedBaseline:<name>`)
@@ -149,6 +149,7 @@ Handle the two edge cases explicitly:
 - A property whose actual value is `unknown` (retrieval failed in Step 4) is reported as `⚠️ Unknown` — never classified as matching or drifting.
 - A matched resource with no comparable tracked properties is reported as `No Comparable Properties`, not as in sync.
 - For each matched resource, explicitly report tracked properties with no diagram annotation or selected-baseline expectation as **Not specified — not assessed**. Do not infer defaults from the retrieval mapping or describe an existence-only report as a configuration check.
+- Include the comparator's coverage status and specified/tracked counts per resource. When coverage is **Incomplete**, describe property comparison as incomplete even if all supplied expectations match.
 
 ### 6. Present the Drift Report
 

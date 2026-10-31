@@ -325,6 +325,33 @@ function Get-PropertySeverity {
     $typeEntry.Default
 }
 
+function Get-TrackedPropertyNames {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$ResourceType,
+
+        [Parameter(Mandatory = $true)]
+        $Configuration
+    )
+
+    $names = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
+    foreach ($rule in $Configuration.globalSkuRules) {
+        if ($ResourceType -like $rule.resourceTypePattern) {
+            [void]$names.Add([string]$rule.property)
+        }
+    }
+    foreach ($entry in $Configuration.resourceTypes) {
+        if ($entry.resourceType -eq $ResourceType) {
+            foreach ($rule in $entry.properties) {
+                [void]$names.Add([string]$rule.name)
+            }
+        }
+    }
+
+    @($names | Sort-Object)
+}
+
 try {
     # Severity lookup index from azure-property-paths.json: per-property severity when
     # declared, otherwise the resource-type default, otherwise 'standard'.
@@ -506,7 +533,12 @@ try {
             $comparedCount = 0
             foreach ($propertyName in $mapA.Keys) {
                 $valueA = $mapA[$propertyName]
-                $valueB = if ($mapB.ContainsKey($propertyName)) { $mapB[$propertyName] } else { $null }
+                if ($mapB.ContainsKey($propertyName)) {
+                    $valueB = $mapB[$propertyName]
+                }
+                else {
+                    $valueB = $null
+                }
 
                 if ((Test-ModelUnresolved $valueA) -or (Test-ModelUnresolved $valueB)) {
                     $uncertainties.Add(@{ property = $propertyName; status = if (Test-ModelUnresolved $valueA) { 'Unresolved' } else { 'Unknown' } })
@@ -524,11 +556,30 @@ try {
                 }
             }
 
+            $trackedPropertyNames = @(Get-TrackedPropertyNames -ResourceType ([string]$entry.resourceA.type) -Configuration $propertyConfig)
+            $notSpecifiedProperties = @($trackedPropertyNames | Where-Object { -not $mapA.ContainsKey($_) })
+            $specifiedTrackedCount = $trackedPropertyNames.Count - $notSpecifiedProperties.Count
+            $coverageStatus = if ($trackedPropertyNames.Count -eq 0) {
+                'Not Applicable'
+            }
+            elseif ($notSpecifiedProperties.Count -gt 0) {
+                'Incomplete'
+            }
+            else {
+                'Complete'
+            }
+
             $entry.propertyComparison = @{
                 status        = if ($uncertainties.Count -gt 0) { 'Incomplete' } elseif ($comparedCount -eq 0) { 'No Comparable Properties' } elseif ($drifts.Count -gt 0) { 'Properties Drifted' } else { 'All Properties Match' }
                 comparedCount = $comparedCount
                 driftCount    = $drifts.Count
                 drifts        = @($drifts)
+                coverage      = @{
+                    status = $coverageStatus
+                    trackedCount = $trackedPropertyNames.Count
+                    specifiedCount = $specifiedTrackedCount
+                    notSpecifiedProperties = $notSpecifiedProperties
+                }
             }
             $entry.propertyComparison.uncertainties = @($uncertainties)
             $sources = Get-ModelMember $entry.resourceA 'propertySources'

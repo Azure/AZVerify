@@ -52,6 +52,9 @@ function ConvertTo-TrackedValue {
     [CmdletBinding()]
     param([AllowNull()]$Value)
 
+    if ($Value -is [string] -or $Value -is [System.ValueType]) {
+        return $Value
+    }
     if ($Value -is [System.Collections.IDictionary] -or $Value -is [pscustomobject]) {
         $result = [ordered]@{}
         $names = if ($Value -is [System.Collections.IDictionary]) { @($Value.Keys) } else { @($Value.PSObject.Properties | ForEach-Object { $_.Name }) }

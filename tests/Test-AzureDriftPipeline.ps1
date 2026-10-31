@@ -101,6 +101,8 @@ function Initialize-Mocks {
     $global:armResponsePath = Join-Path $Root 'arm-responses.json'
     $global:inventoryPath = Join-Path $Root 'inventory.json'
     $global:azCallLog = Join-Path $Root 'az-call-log.txt'
+    $global:providerMetadata = @{}
+    $global:resourceDetails = @{}
 }
 
 function az {
@@ -119,6 +121,17 @@ function az {
     }
     if ($Arguments -contains 'cloud' -and $Arguments -contains 'show') {
         return ('"' + $endpoint + '/"')
+    }
+    if ($Arguments -contains 'provider' -and $Arguments -contains 'show') {
+        return ($global:providerMetadata | ConvertTo-Json -Depth 100 -Compress)
+    }
+    if ($Arguments -contains 'resource' -and $Arguments -contains 'show') {
+        $idIndex = [Array]::IndexOf($Arguments, '--ids')
+        $resourceId = $Arguments[$idIndex + 1]
+        if (-not $global:resourceDetails.ContainsKey($resourceId)) {
+            throw "No mocked resource detail registered for $resourceId."
+        }
+        return ($global:resourceDetails[$resourceId] | ConvertTo-Json -Depth 100 -Compress)
     }
     if ($Arguments -contains 'resource' -and $Arguments -contains 'list') {
         return Get-Content -LiteralPath $global:inventoryPath -Raw
@@ -496,6 +509,9 @@ try {
         -AzureIdentity -TrackedProperties -OutFile $scopeLocationComparisonPath
     Assert-Equal (Read-JsonFile $scopeLocationComparisonPath).matches[0].propertyComparison.status `
         'No Comparable Properties' 'Inherited deployment location is not compared as an explicit expectation'
+    $scopeLocationCoverage = (Read-JsonFile $scopeLocationComparisonPath).matches[0].propertyComparison.coverage
+    Assert-Equal $scopeLocationCoverage.status 'Incomplete' 'Zero specified tracked properties still report incomplete coverage'
+    Assert-Equal $scopeLocationCoverage.specifiedCount 0 'Coverage reports that no tracked properties were specified'
     $global:compiledTemplatePath = Join-Path $workRoot 'compiled-arm-template.json'
 
     $enrichedInputPath = Join-Path $workRoot 'enriched-input.json'
@@ -545,6 +561,38 @@ try {
         -AzureIdentity -TrackedProperties -OutFile $nestedComparison
     Assert-True (Test-Path -LiteralPath $nestedComparison) 'Nested tracked-object comparison emitted a report'
     Assert-Equal (Read-JsonFile $nestedComparison).matches[0].propertyComparison.status 'All Properties Match' 'Azure-only nested/default object fields are ignored'
+    $nestedCoverage = (Read-JsonFile $nestedComparison).matches[0].propertyComparison.coverage
+    Assert-Equal $nestedCoverage.status 'Incomplete' 'Deep comparison marks unannotated tracked properties incomplete'
+    Assert-True ($nestedCoverage.notSpecifiedProperties -contains 'vmSize') 'Coverage lists tracked properties without expected values'
+
+    $arrayExpectedPath = Join-Path $workRoot 'array-expected.json'
+    $arrayActualPath = Join-Path $workRoot 'array-actual.json'
+    $arrayComparisonPath = Join-Path $workRoot 'array-comparison.json'
+    $arrayResourceId = New-ResourceId 'Microsoft.Network/virtualNetworks' 'array-vnet'
+    Write-JsonFile @{ resources = @(@{
+        id = $arrayResourceId; name = 'array-vnet'; type = 'Microsoft.Network/virtualNetworks'
+        properties = @{}; comparisonProperties = @{ addressPrefixes = @('10.0.0.0/16') }
+    }) } $arrayExpectedPath
+    Write-JsonFile @{ resources = @(@{
+        id = $arrayResourceId; name = 'array-vnet'; type = 'Microsoft.Network/virtualNetworks'
+        properties = @{ addressSpace = @{ addressPrefixes = @('10.0.0.0/16') } }
+    }) } $arrayActualPath
+    & (Join-Path $shared 'Compare-ResourceModels.ps1') -ModelA $arrayExpectedPath -ModelB $arrayActualPath `
+        -AzureIdentity -TrackedProperties -OutFile $arrayComparisonPath
+    $arrayComparison = Read-JsonFile $arrayComparisonPath
+    Assert-Equal $arrayComparison.matches[0].propertyComparison.status 'All Properties Match' 'One-element expected and actual arrays compare as arrays'
+    Assert-Equal $arrayComparison.matches[0].propertyComparison.driftCount 0 'Equivalent address prefix arrays do not report false drift'
+
+    Write-JsonFile @{ resources = @(@{
+        id = $arrayResourceId; name = 'array-vnet'; type = 'Microsoft.Network/virtualNetworks'
+        properties = @{ addressSpace = @{ addressPrefixes = @('10.0.0.0/16', '10.1.0.0/16') } }
+    }) } $arrayActualPath
+    & (Join-Path $shared 'Compare-ResourceModels.ps1') -ModelA $arrayExpectedPath -ModelB $arrayActualPath `
+        -AzureIdentity -TrackedProperties -OutFile $arrayComparisonPath
+    $arrayDrift = (Read-JsonFile $arrayComparisonPath).matches[0].propertyComparison.drifts[0]
+    Assert-Equal (@($arrayDrift.valueA).Count) 1 'Expected array remains concrete in drift output'
+    Assert-Equal (@($arrayDrift.valueB).Count) 2 'Actual array remains concrete in drift output'
+
     $noComparableA = Join-Path $workRoot 'no-comparable-a.json'
     $noComparableB = Join-Path $workRoot 'no-comparable-b.json'
     $noComparableComparison = Join-Path $workRoot 'no-comparable-comparison.json'
@@ -567,6 +615,40 @@ try {
     $unknownCondition = Read-JsonFile $noComparableComparison
     Assert-Equal $unknownCondition.matches.Count 1 'An unknown condition does not double-count the same actual identity'
     Assert-Equal $unknownCondition.matches[0].status 'Unverified' 'An unknown expected condition is unverified even when inventory found the ID'
+
+    $enrichInventory = @(
+        (New-InventoryResource 'Microsoft.Network/networkSecurityGroups' 'test-nsg'),
+        (New-InventoryResource 'Microsoft.Network/routeTables' 'test-rt')
+    )
+    Write-JsonFile $enrichInventory $global:inventoryPath
+    $global:providerMetadata = @{
+        resourceTypes = @(
+            @{ resourceType = 'networkSecurityGroups'; apiVersions = @('2026-05-01', '2026-07-01-preview') },
+            @{ resourceType = 'routeTables'; apiVersions = @('2026-04-01', '2026-06-01-preview') }
+        )
+    }
+    $global:resourceDetails = @{
+        (New-ResourceId 'Microsoft.Network/networkSecurityGroups' 'test-nsg') = @{
+            id = New-ResourceId 'Microsoft.Network/networkSecurityGroups' 'test-nsg'
+            name = 'test-nsg'; type = 'Microsoft.Network/networkSecurityGroups'
+            location = 'eastus'; properties = @{}
+        }
+        (New-ResourceId 'Microsoft.Network/routeTables' 'test-rt') = @{
+            id = New-ResourceId 'Microsoft.Network/routeTables' 'test-rt'
+            name = 'test-rt'; type = 'Microsoft.Network/routeTables'
+            location = 'eastus'; properties = @{}
+        }
+    }
+    $global:azCalls.Clear()
+    $enrichedLivePath = Join-Path $workRoot 'enriched-live-model.json'
+    & (Join-Path $shared 'Get-AzureResourceModel.ps1') -ResourceGroup $resourceGroup -SubscriptionId $subscriptionId `
+        -Enrich -OutFile $enrichedLivePath
+    Assert-Equal $LASTEXITCODE 0 'Live enrichment selects a provider-supported API version'
+    Assert-Equal (@($global:azCalls | Where-Object { $_ -match '^provider show' }).Count) 1 'Provider metadata is cached per namespace'
+    Assert-True (@($global:azCalls | Where-Object { $_ -match 'networkSecurityGroups.*--api-version 2026-05-01' }).Count -eq 1) `
+        'Network security group enrichment uses its latest stable provider API version'
+    Assert-True (@($global:azCalls | Where-Object { $_ -match 'routeTables.*--api-version 2026-04-01' }).Count -eq 1) `
+        'Route table enrichment uses its latest stable provider API version'
 
     $missingApiModel = [ordered]@{ resources = @(
         [ordered]@{

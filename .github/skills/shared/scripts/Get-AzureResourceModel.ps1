@@ -184,8 +184,9 @@ function Get-JsonPathValue {
             $index = [int]$segmentMatch.Groups[2].Value
 
             if ($current -is [System.Management.Automation.PSCustomObject]) {
-                if (-not ($current.PSObject.Properties.Name -contains $propertyName)) { return $null }
-                $current = $current.$propertyName
+                $member = $current.PSObject.Properties[$propertyName]
+                if (-not $member) { return $null }
+                $current = $member.Value
             }
             elseif ($current -is [System.Collections.IDictionary]) {
                 if (-not $current.Contains($propertyName)) { return $null }
@@ -209,8 +210,9 @@ function Get-JsonPathValue {
         }
 
         if ($current -is [System.Management.Automation.PSCustomObject]) {
-            if (-not ($current.PSObject.Properties.Name -contains $segment)) { return $null }
-            $current = $current.$segment
+            $member = $current.PSObject.Properties[$segment]
+            if (-not $member) { return $null }
+            $current = $member.Value
         }
         elseif ($current -is [System.Collections.IDictionary]) {
             if (-not $current.Contains($segment)) { return $null }
@@ -578,6 +580,44 @@ function Invoke-AzJson {
     return $parsedJson
 }
 
+$script:providerMetadataCache = @{}
+
+function Get-SupportedResourceApiVersion {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$ResourceType
+    )
+
+    $segments = $ResourceType -split '/', 2
+    if ($segments.Count -ne 2) {
+        throw "Cannot determine the Azure provider and resource type from '$ResourceType'."
+    }
+
+    $namespace = $segments[0]
+    if (-not $script:providerMetadataCache.ContainsKey($namespace)) {
+        $provider = Invoke-AzJson -Arguments @('provider', 'show', '--namespace', $namespace, '--output', 'json')
+        $script:providerMetadataCache[$namespace] = @($provider.resourceTypes)
+    }
+
+    $resourceTypes = @($script:providerMetadataCache[$namespace] | Where-Object {
+        [string]::Equals([string]$_.resourceType, $segments[1], [System.StringComparison]::OrdinalIgnoreCase)
+    })
+    if ($resourceTypes.Count -ne 1) {
+        throw "Azure provider metadata for '$namespace' did not return one resource type matching '$($segments[1])'."
+    }
+
+    $versions = @($resourceTypes[0].apiVersions | Where-Object { $_ -notmatch 'preview' } | Sort-Object -Descending)
+    if ($versions.Count -eq 0) {
+        $versions = @($resourceTypes[0].apiVersions | Sort-Object -Descending)
+    }
+    if ($versions.Count -eq 0) {
+        throw "Azure provider metadata for '$ResourceType' did not include any supported API versions."
+    }
+
+    [string]$versions[0]
+}
+
 try {
     if ($ExpectedModel) {
         if (-not $SubscriptionId -or $StripReadOnly) {
@@ -648,7 +688,8 @@ try {
             $details = ConvertTo-GenericResourceModel -AzResource $azResource
         }
         else {
-            $arguments = @('resource', 'show', '--ids', [string]$resource.id, '--output', 'json')
+            $apiVersion = Get-SupportedResourceApiVersion -ResourceType ([string]$resource.type)
+            $arguments = @('resource', 'show', '--ids', [string]$resource.id, '--api-version', $apiVersion, '--output', 'json')
             if (-not [string]::IsNullOrWhiteSpace($SubscriptionId)) {
                 $arguments += @('--subscription', $SubscriptionId)
             }
