@@ -110,8 +110,12 @@ Baseline storage fixture:
 Complex fixture:
 
 ```powershell
-pwsh test/scripts/Deploy-ComplexFixtures.ps1 -SubscriptionId <subscription-id>
+$subscriptionId = '<subscription-id>'
+$env:AZVERIFY_NAME_SUFFIX = $subscriptionId.Replace('-', '').Substring(0, 8).ToLowerInvariant()
+pwsh test/scripts/Deploy-ComplexFixtures.ps1 -SubscriptionId $subscriptionId
 ```
+
+The two `.bicepparam` files read `AZVERIFY_NAME_SUFFIX`, so keep this environment variable set for parameter parsing and drift detection in the same shell session.
 
 Record resource counts/types per group and peering status.
 

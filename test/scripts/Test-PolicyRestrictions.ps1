@@ -118,9 +118,21 @@ try {
         '--parameters', "storageAccountName=$accountName",
         '--output', 'json'
     ) -AllowFailure
-    $evaluationCount = @($policyResponse.contentEvaluationResult.policyEvaluations).Count
+    $policyEvaluations = @($policyResponse.contentEvaluationResult.policyEvaluations)
+    $evaluationCount = $policyEvaluations.Count
     $restrictionCount = @($policyResponse.fieldRestrictions).Count
-    $policyCheckDetectedDenial = $evaluationCount -gt 0 -or $restrictionCount -gt 0
+    $temporaryAssignmentId = ([string]$created.id).TrimEnd('/')
+    $temporaryAssignmentDenialCount = @($policyEvaluations | Where-Object {
+        $evaluationResult = $_.PSObject.Properties['evaluationResult']
+        $effectDetails = $_.PSObject.Properties['effectDetails']
+        $assignmentId = $_.PSObject.Properties['policyAssignmentId']
+        $effect = if ($effectDetails) { $effectDetails.Value.PSObject.Properties['effect'] }
+
+        $evaluationResult -and $evaluationResult.Value -ieq 'NonCompliant' -and
+        $effect -and $effect.Value -ieq 'deny' -and
+        $assignmentId -and ([string]$assignmentId.Value).TrimEnd('/') -ieq $temporaryAssignmentId
+    }).Count
+    $policyCheckDetectedDenial = $temporaryAssignmentDenialCount -gt 0
     $validationDetectedDenial = $validation.ExitCode -ne 0 -and $validation.Text -match 'RequestDisallowedByPolicy|policy violation'
 
     [pscustomobject]@{
@@ -128,6 +140,7 @@ try {
         assignmentName = $created.name
         evaluationCount = $evaluationCount
         fieldRestrictionCount = $restrictionCount
+        temporaryAssignmentDenialCount = $temporaryAssignmentDenialCount
         policyCheckDetectedDenial = $policyCheckDetectedDenial
         validationDetectedDenial = $validationDetectedDenial
         validationExitCode = $validation.ExitCode

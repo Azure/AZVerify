@@ -40,35 +40,29 @@ resource vnet 'Microsoft.Network/virtualNetworks@2025-01-01' = {
   tags: tags
   properties: {
     addressSpace: { addressPrefixes: [addressPrefix] }
+    subnets: [for (subnetName, index) in subnetNames: {
+      name: subnetName
+      properties: {
+        addressPrefix: subnetPrefixes[index]
+        networkSecurityGroup: { id: nsg.id }
+        routeTable: { id: routes.id }
+      }
+    }]
   }
 }
-
-@batchSize(1)
-resource subnets 'Microsoft.Network/virtualNetworks/subnets@2025-01-01' = [for (subnetName, index) in subnetNames: {
-  parent: vnet
-  name: subnetName
-  properties: {
-    addressPrefix: subnetPrefixes[index]
-    networkSecurityGroup: { id: nsg.id }
-    routeTable: { id: routes.id }
-  }
-}]
 
 @batchSize(1)
 resource interfaces 'Microsoft.Network/networkInterfaces@2025-01-01' = [for index in range(0, 2): {
   name: '${prefix}-nic-${index}'
   location: location
   tags: tags
-  dependsOn: [
-    subnets
-  ]
   properties: {
     networkSecurityGroup: { id: nsg.id }
     ipConfigurations: [{
       name: 'primary'
       properties: {
         privateIPAllocationMethod: 'Dynamic'
-        subnet: { id: subnets[1].id }
+        subnet: { id: resourceId('Microsoft.Network/virtualNetworks/subnets', vnet.name, 'application') }
       }
     }]
   }

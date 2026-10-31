@@ -25,6 +25,24 @@
       "defaultWidth": 50,
       "defaultHeight": 50
     },
+    "Microsoft.Network/networkInterfaces": {
+      "imagePath": "img/lib/azure2/networking/Network_Interfaces.svg",
+      "label": "Network Interface",
+      "defaultWidth": 50,
+      "defaultHeight": 50
+    },
+    "Microsoft.Network/networkSecurityGroups": {
+      "imagePath": "img/lib/azure2/networking/Network_Security_Groups.svg",
+      "label": "Network Security Group",
+      "defaultWidth": 50,
+      "defaultHeight": 50
+    },
+    "Microsoft.Network/routeTables": {
+      "imagePath": "img/lib/azure2/networking/Route_Tables.svg",
+      "label": "Route Table",
+      "defaultWidth": 50,
+      "defaultHeight": 50
+    },
     "Microsoft.Network/virtualNetworks/subnets": {
       "imagePath": "img/lib/azure2/networking/Subnet.svg",
       "label": "Subnet",
@@ -50,6 +68,25 @@
       "label": "SQL Managed Instance",
       "defaultWidth": 50,
       "defaultHeight": 50
+    },
+    "Microsoft.Storage/storageAccounts": {
+      "imagePath": "img/lib/azure2/storage/Storage_Accounts.svg",
+      "label": "Storage Account",
+      "defaultWidth": 50,
+      "defaultHeight": 50
+    },
+    "Microsoft.KeyVault/vaults": {
+      "imagePath": "img/lib/azure2/security/Key_Vaults.svg",
+      "label": "Key Vault",
+      "defaultWidth": 50,
+      "defaultHeight": 50
+    },
+    "Microsoft.Insights/actionGroups": {
+      "imagePath": "img/lib/azure2/management_governance/Alerts.svg",
+      "label": "Action Group",
+      "defaultWidth": 50,
+      "defaultHeight": 50,
+      "note": "Uses the Azure Alerts icon because no dedicated Action Groups icon exists in the azure2 library."
     },
 
     "_comment_wrongCategory": "These icons are in unexpected categories — the LLM would guess wrong",

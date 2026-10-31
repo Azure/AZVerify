@@ -95,7 +95,7 @@ function Get-ImagePath([string]$type) {
         return [string]$entry.Value.imagePath
     }
 
-    'img/lib/azure2/general/Azure_Resource.svg'
+    throw "No stencil mapping found for resource type '$type'. Update the stencil mapping before generating this scenario diagram."
 }
 
 $layout = @{
@@ -109,22 +109,48 @@ $layout = @{
     'spokenet' = @{ x = 290; y = 70; w = 260; h = 150 }
     'nsg1' = @{ x = 40; y = 245 }
     'route' = @{ x = 120; y = 245 }
-    'nic1' = @{ x = 300; y = 90 }
-    'vm1' = @{ x = 370; y = 90 }
+    'nic1' = @{ x = 20; y = 50 }
+    'vm1' = @{ x = 100; y = 50 }
     'web' = @{ x = 510; y = 540 }
     'plan' = @{ x = 510; y = 460 }
     'identity' = @{ x = 580; y = 460 }
     'storage1' = @{ x = 650; y = 540 }
     'vault' = @{ x = 720; y = 540 }
-    'pe' = @{ x = 620; y = 90 }
+    'pe' = @{ x = 100; y = 50 }
     'dns' = @{ x = 40; y = 540 }
     'logs' = @{ x = 120; y = 540 }
     'ai' = @{ x = 200; y = 540 }
     'action' = @{ x = 280; y = 540 }
     'nsg2' = @{ x = 40; y = 250 }
-    'nic2' = @{ x = 300; y = 90 }
-    'vm2' = @{ x = 370; y = 90 }
+    'nic2' = @{ x = 20; y = 50 }
+    'vm2' = @{ x = 100; y = 50 }
     'storage2' = @{ x = 460; y = 250 }
+}
+
+foreach ($resource in $scenario.resources) {
+    $parentGeometry = $layout[[string]$resource.parent]
+    if (-not $parentGeometry -or -not $parentGeometry.ContainsKey('w')) {
+        continue
+    }
+
+    $geometryInfo = $layout[[string]$resource.id]
+    $isContainer = [bool](Get-StyleForContainer -type ([string]$resource.type))
+    if (-not $geometryInfo) {
+        $geometryInfo = if ($isContainer) {
+            @{ x = 30; y = 30; w = 350; h = 220 }
+        }
+        else {
+            @{ x = 50; y = 50 }
+        }
+    }
+
+    $width = if ($isContainer) { $geometryInfo.w } else { 50 }
+    $height = if ($isContainer) { $geometryInfo.h } else { 50 }
+    if ($geometryInfo.x -lt 0 -or $geometryInfo.y -lt 0 -or
+        $geometryInfo.x + $width -gt $parentGeometry.w -or
+        $geometryInfo.y + $height -gt $parentGeometry.h) {
+        throw "Layout for resource '$($resource.id)' exceeds parent '$($resource.parent)' bounds."
+    }
 }
 
 foreach ($resource in $scenario.resources) {
