@@ -144,8 +144,8 @@ function Get-ComparisonProperty {
     $result = @{}
     $names = if ($PSBoundParameters.ContainsKey('PropertyName')) { $PropertyName } elseif ($projected -is [System.Collections.IDictionary]) { @($projected.Keys) } else { @($projected.PSObject.Properties | ForEach-Object { $_.Name }) }
     foreach ($name in $names) {
-        $value = Get-ModelMember $projected $name
-        $result[$name] = if ($null -eq $value) { 'unknown' } else { $value }
+        $hasValue = if ($projected -is [System.Collections.IDictionary]) { $projected.Contains($name) } else { $null -ne $projected.PSObject.Properties[$name] }
+        $result[$name] = if ($hasValue) { Get-ModelMember $projected $name } else { 'unknown' }
     }
     return $result
 }

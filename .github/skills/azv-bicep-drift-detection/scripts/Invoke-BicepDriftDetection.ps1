@@ -175,6 +175,16 @@ if ($status -eq 'INCOMPLETE') {
 [void]$report.AppendLine("| No comparable properties (existence only) | $noComparable |")
 [void]$report.AppendLine("| No change | $noChange |")
 
+if ($noComparable -gt 0) {
+    [void]$report.AppendLine(); [void]$report.AppendLine('## No Comparable Properties')
+    foreach ($entry in @($comparison.matches | Where-Object {
+        $_.status -in @('In Sync', 'In Sync (name differs)') -and
+        (-not $_.PSObject.Properties['propertyComparison'] -or $_.propertyComparison.status -eq 'No Comparable Properties')
+    })) {
+        [void]$report.AppendLine("- ``$($entry.resourceA.type)`` ``$($entry.resourceA.name)``: configuration was not assessed")
+    }
+}
+
 if ($create.Count -gt 0) {
     [void]$report.AppendLine(); [void]$report.AppendLine('## Create')
     foreach ($resource in $create) { [void]$report.AppendLine("- ``$($resource.type)`` ``$($resource.name)``") }
@@ -201,7 +211,7 @@ if ($unresolved.Count -gt 0 -or $issues.Count -gt 0) {
         [void]$report.AppendLine("- ``$($resource.type)`` ``$($resource.name)``: $reason")
         foreach ($entry in @($comparison.matches | Where-Object { $_.resourceA -and $_.resourceA.id -eq $resource.id -and $_.PSObject.Properties['propertyComparison'] })) {
             foreach ($drift in @($entry.propertyComparison.drifts)) {
-                [void]$report.AppendLine("  - Confirmed drift in ``$($drift.property)`` (other expectations remain unverified)")
+                [void]$report.AppendLine("  - Confirmed drift in ``$($drift.property)``: Bicep ``$(ConvertTo-Json -InputObject $drift.valueA -Compress -Depth 5)`` vs Azure ``$(ConvertTo-Json -InputObject $drift.valueB -Compress -Depth 5)`` (other expectations remain unverified)")
             }
         }
     }

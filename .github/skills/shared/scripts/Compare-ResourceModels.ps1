@@ -386,7 +386,7 @@ try {
                 if ($matchedB.Contains($rb)) { throw "Duplicate expected resource ID: $id" }
                 $existence = [string](Get-ModelMember $rb.Resource 'existence')
                 $comparisonMatches.Add(@{
-                    status = if ($existence -eq 'Unknown' -or (Get-ModelMember $ra.Resource 'existenceUnknown')) { 'Unverified' } else { 'In Sync' }
+                    status = if ($existence -eq 'Unknown' -or (Get-ModelMember $ra.Resource 'existenceUnknown')) { 'Unverified' } elseif ($existence -eq 'Absent') { "$LabelA Only" } else { 'In Sync' }
                     existence = if ($existence) { $existence } else { 'Found' }
                     resourceA = $ra.Resource; resourceB = $rb.Resource; note = 'Exact ARM identity match'
                 })
