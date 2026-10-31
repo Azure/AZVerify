@@ -51,6 +51,24 @@ param(
     [Parameter(ParameterSetName = 'Live')]
     [string]$SubscriptionId,
 
+    [Parameter(ParameterSetName = 'Live')]
+    [string]$ExpectedModel,
+
+    [Parameter(ParameterSetName = 'Live')]
+    [ValidateRange(1, 16)]
+    [int]$ThrottleLimit = 4,
+
+    [Parameter(ParameterSetName = 'Live')]
+    [ValidateRange(0, 5)]
+    [int]$MaxRetry = 2,
+
+    [Parameter(ParameterSetName = 'Live')]
+    [ValidateRange(1, 300)]
+    [int]$TimeoutSeconds = 30,
+
+    [Parameter(ParameterSetName = 'Live')]
+    [string]$ManagementEndpoint = 'https://management.azure.com/',
+
     [Parameter()]
     [switch]$Enrich,
 
@@ -540,7 +558,7 @@ function Invoke-AzJson {
         throw 'Azure CLI (az) is required for live discovery mode.'
     }
 
-    $output = & $azCommand.Source @Arguments 2>&1
+    $output = & az @Arguments 2>&1
     if ($LASTEXITCODE -ne 0) {
         throw ("Azure CLI command failed: az {0}`n{1}" -f ($Arguments -join ' '), ($output -join [Environment]::NewLine))
     }
@@ -560,6 +578,21 @@ function Invoke-AzJson {
 }
 
 try {
+    if ($ExpectedModel) {
+        if (-not $ResourceGroup -or -not $SubscriptionId -or $StripReadOnly) {
+            throw 'Expected-aware discovery requires explicit ResourceGroup and SubscriptionId and cannot be used with StripReadOnly.'
+        }
+        . "$PSScriptRoot\_ExpectedAzureDiscovery.ps1"
+        $discoveryParameters = @{
+            ExpectedModel = $ExpectedModel; ResourceGroup = $ResourceGroup; SubscriptionId = $SubscriptionId
+            ThrottleLimit = $ThrottleLimit; MaxRetry = $MaxRetry; TimeoutSeconds = $TimeoutSeconds
+            ManagementEndpoint = $ManagementEndpoint
+        }
+        if ($Mode) { $discoveryParameters.Mode = $Mode }
+        $model = Get-ExpectedAzureModel @discoveryParameters
+        Write-ResourceModel -Model $model -OutFile $OutFile
+        return
+    }
     if ($isOfflineMode) {
         $resolvedPath = Resolve-Path -LiteralPath $FromJson -ErrorAction Stop
         Write-Diag "Loading offline resource list from '$resolvedPath'."

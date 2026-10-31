@@ -23,6 +23,8 @@ If a script cannot run because a prerequisite is missing, the calling skill foll
 | `Compare-ResourceModels.ps1` | Compares two normalized resource models and classifies matches/drift. | `pwsh .github/skills/shared/scripts/Compare-ResourceModels.ps1 -ModelA <a.json> -ModelB <b.json> [-CompareProperties]` | Emits summary counts and per-resource match records. `-CompareProperties` adds property-level drift with severity from `data/azure-property-paths.json`. |
 | `Get-AzureResourceModel.ps1` | Builds a resource model from live Azure or captured `az resource list` JSON. | `pwsh .github/skills/shared/scripts/Get-AzureResourceModel.ps1 -ResourceGroup <rg> [-Enrich] [-StripReadOnly]` | Supports offline mode with `-FromJson`; can enrich properties using `data/azure-property-paths.json`. `-StripReadOnly` removes read-only properties and flags secrets using `data/arm-readonly-properties.json`. |
 | `Invoke-Fixtures.ps1` | Runs smoke tests across example fixtures. | `pwsh .github/skills/shared/scripts/Invoke-Fixtures.ps1` | Validates parser/filter/compare flows across `examples/`. |
+
+Opt-in options (defaults unchanged for other skills): `ConvertFrom-BicepTemplate.ps1` accepts ARM JSON parameter files, `-ParameterOverride`, `-SubscriptionId/-ResourceGroup/-Location`, `-ResolveDeterministicNames` (offline `uniqueString`/`guid`) and `-MaskSecrets`; `Get-AzureResourceModel.ps1 -ExpectedModel` does expected-aware discovery; `Compare-ResourceModels.ps1 -AzureIdentity -TrackedProperties` does exact-ID matching and tracked-property comparison; `Test-AzureAuth.ps1 -Backend/-SubscriptionId` pins the probe. These are used by `azv-bicep-drift-detection/scripts/Invoke-BicepDriftDetection.ps1`.
 
 ## Recommended usage pattern in skills
 

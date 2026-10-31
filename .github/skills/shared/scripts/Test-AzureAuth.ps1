@@ -22,6 +22,13 @@ pwsh Test-AzureAuth.ps1 -OutFile auth.json
 [CmdletBinding()]
 param(
     [Parameter()]
+    [ValidateSet('Auto', 'AzureCLI', 'AzPowerShell')]
+    [string]$Backend = 'Auto',
+
+    [Parameter()]
+    [string]$SubscriptionId,
+
+    [Parameter()]
     [string]$OutFile
 )
 
@@ -32,9 +39,10 @@ $ErrorActionPreference = 'Stop'
 
 $authContext = $null
 
+if ($Backend -ne 'AzureCLI') {
 try {
     $context = Get-AzContext -ErrorAction Stop
-    if ($context) {
+    if ($context -and (-not $SubscriptionId -or $context.Subscription.Id -eq $SubscriptionId)) {
         $authContext = @{
             method           = 'AzPowerShell'
             subscriptionName = $context.Subscription.Name
@@ -47,11 +55,14 @@ try {
 catch {
     Write-Verbose "Az PowerShell context unavailable: $_"
 }
+}
 
-if (-not $authContext) {
+if (-not $authContext -and $Backend -ne 'AzPowerShell') {
     try {
-        $azOutput = az account show --output json 2>$null
-        if (-not [string]::IsNullOrWhiteSpace($azOutput)) {
+        $arguments = @('account', 'show', '--output', 'json')
+        if ($SubscriptionId) { $arguments += @('--subscription', $SubscriptionId) }
+        $azOutput = az @arguments 2>$null
+        if ($LASTEXITCODE -eq 0 -and -not [string]::IsNullOrWhiteSpace(($azOutput -join ''))) {
             $parsed = $azOutput | ConvertFrom-Json -ErrorAction Stop
             $authContext = @{
                 method           = 'AzureCLI'

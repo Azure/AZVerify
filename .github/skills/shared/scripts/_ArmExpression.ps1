@@ -340,6 +340,9 @@ function New-ArmScope {
         Locals            = @{}
         CopyIndex         = @{}
         ConditionUnknown  = $false
+        NamingValues      = @{}
+        NamingRequests    = @{}
+        ResolveDeterministicNames = $false
     }
     $scope.Root = $scope
     $scope
@@ -393,6 +396,9 @@ function New-ArmChildScope {
     $child = New-ArmScope -Template $properties['template'] -SubscriptionId $subscriptionId -ResourceGroupName $resourceGroupName `
         -Location $Scope.Location -Path "$($Scope.Path)/$DeploymentName" -DeploymentName ([string]$DeploymentName) -SourceFile $Scope.SourceFile
     $child.ConditionUnknown = $Scope.ConditionUnknown
+    $child.NamingValues = $Scope.NamingValues
+    $child.NamingRequests = $Scope.NamingRequests
+    $child.ResolveDeterministicNames = $Scope.ResolveDeterministicNames
 
     # Bicep modules use inner expression scope: parameter values are evaluated in the parent scope.
     $supplied = [ordered]@{}
@@ -624,6 +630,13 @@ function Invoke-ArmFunction {
     }
 
     foreach ($value in $values) { if ($value -is [ArmUnresolved]) { return $value } }
+
+    if ($Scope.ResolveDeterministicNames -and $lowerName -in @('uniquestring', 'guid')) {
+        $key = $lowerName + ':' + (ConvertTo-Json -InputObject @($values) -Compress -Depth 20)
+        if ($Scope.NamingValues.ContainsKey($key)) { return $Scope.NamingValues[$key] }
+        $Scope.NamingRequests[$key] = @{ key = $key; name = $name; arguments = $values }
+        return [ArmUnresolved]::new("pending deterministic function $name()")
+    }
 
     if ($name.Contains('.')) {
         $functionKey = Find-ArmKey $Scope.Functions $name
@@ -1016,6 +1029,27 @@ function Resolve-ArmValue {
     }
 
     , $Value
+}
+
+function Protect-ArmValue {
+    [CmdletBinding()]
+    param([AllowNull()]$Value)
+
+    if ($Value -is [System.Collections.IDictionary]) {
+        $result = [ordered]@{}
+        foreach ($key in $Value.Keys) {
+            $result[$key] = if ([string]$key -match '(?i)password|secret|connectionstring|privatekey|accesstoken|accountkey') {
+                '<unresolved: secret value>'
+            }
+            else { Protect-ArmValue $Value[$key] }
+        }
+        return , $result
+    }
+    if (Test-ArmList $Value) {
+        $items = @($Value | ForEach-Object { Protect-ArmValue $_ })
+        return , $items
+    }
+    $Value
 }
 
 function ConvertTo-ArmPlainValue {

@@ -51,6 +51,12 @@ param(
     [switch]$CompareProperties,
 
     [Parameter()]
+    [switch]$AzureIdentity,
+
+    [Parameter()]
+    [switch]$TrackedProperties,
+
+    [Parameter()]
     [string]$OutFile
 )
 
@@ -58,6 +64,7 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
 . "$PSScriptRoot/_Common.ps1"
+. "$PSScriptRoot/_ResourceProjection.ps1"
 
 function Format-NormalizedText {
     [CmdletBinding()]
@@ -318,7 +325,7 @@ try {
     # Severity lookup index from azure-property-paths.json: per-property severity when
     # declared, otherwise the resource-type default, otherwise 'standard'.
     $severityIndex = @{}
-    if ($CompareProperties.IsPresent) {
+    if ($CompareProperties.IsPresent -or $TrackedProperties.IsPresent) {
         $propertyConfigPath = Resolve-Path -Path (Join-Path $PSScriptRoot '../data/azure-property-paths.json') -ErrorAction Stop
         $propertyConfig = Get-Content -LiteralPath $propertyConfigPath -Raw | ConvertFrom-Json
 
@@ -354,6 +361,28 @@ try {
     $matchedB = [System.Collections.Generic.HashSet[object]]::new()
     $comparisonMatches = [System.Collections.Generic.List[object]]::new()
 
+    if ($AzureIdentity) {
+        $identityIndex = @{}
+        foreach ($rb in $recordsB) {
+            $id = [string](Get-ModelMember $rb.Resource 'id')
+            if ($id.StartsWith('/subscriptions/', [System.StringComparison]::OrdinalIgnoreCase) -and -not (Test-ModelUnresolved $id)) {
+                if ($identityIndex.ContainsKey($id)) { throw "Duplicate actual resource ID: $id" }
+                $identityIndex[$id] = $rb
+            }
+        }
+        foreach ($ra in $recordsA) {
+            $id = [string](Get-ModelMember $ra.Resource 'id')
+            if ((Test-ModelUnresolved $id) -or (Get-ModelMember $ra.Resource 'existenceUnknown')) { continue }
+            if ($identityIndex.ContainsKey($id)) {
+                $rb = $identityIndex[$id]
+                if ($matchedB.Contains($rb)) { throw "Duplicate expected resource ID: $id" }
+                $comparisonMatches.Add(@{ status = 'In Sync'; resourceA = $ra.Resource; resourceB = $rb.Resource; note = 'Exact ARM identity match' })
+                [void]$matchedA.Add($ra)
+                [void]$matchedB.Add($rb)
+            }
+        }
+    }
+    else {
     # Rule 1: Type + exact name + parent-context match, resolved via a key index so each
     # candidate lookup is O(1) instead of scanning the full B list per A resource.
     $exactIndexB = @{}
@@ -430,10 +459,13 @@ try {
         }
     }
 
+    }
+
     # Final unmatched resources.
     foreach ($ra in $recordsA) {
         if ($matchedA.Contains($ra)) { continue }
-        $comparisonMatches.Add(@{ status = "$LabelA Only"; resourceA = $ra.Resource; resourceB = $null; note = 'Present only in first model' })
+        $uncertain = $AzureIdentity -and ((Test-ModelUnresolved (Get-ModelMember $ra.Resource 'id')) -or (Get-ModelMember $ra.Resource 'existenceUnknown'))
+        $comparisonMatches.Add(@{ status = if ($uncertain) { 'Unresolved' } else { "$LabelA Only" }; resourceA = $ra.Resource; resourceB = $null; note = if ($uncertain) { 'Expected identity or existence cannot be resolved' } else { 'Present only in first model' } })
     }
 
     foreach ($rb in $recordsB) {
@@ -441,7 +473,7 @@ try {
         $comparisonMatches.Add(@{ status = "$LabelB Only"; resourceA = $null; resourceB = $rb.Resource; note = 'Present only in second model' })
     }
 
-    if ($CompareProperties.IsPresent) {
+    if ($CompareProperties.IsPresent -or $TrackedProperties.IsPresent) {
         # Model A is the expected state: compare each of its properties against B's value.
         # Keys only present in B are ignored (the expected model did not specify them).
         foreach ($entry in $comparisonMatches) {
@@ -452,11 +484,25 @@ try {
             $mapA = ConvertTo-PropertyMap -Properties $propertiesA
             $mapB = ConvertTo-PropertyMap -Properties $propertiesB
 
+            if ($TrackedProperties) {
+                $mapA = Get-TrackedProperty -Resource $entry.resourceA -Configuration $propertyConfig
+                $projected = Get-ModelMember $entry.resourceB 'comparisonProperties'
+                $mapB = if ($null -ne $projected) { ConvertTo-PropertyMap $projected } else {
+                    Get-TrackedProperty -Resource $entry.resourceB -Configuration $propertyConfig -PropertyName @($mapA.Keys)
+                }
+            }
             $drifts = [System.Collections.Generic.List[object]]::new()
+            $uncertainties = [System.Collections.Generic.List[object]]::new()
+            $comparedCount = 0
             foreach ($propertyName in $mapA.Keys) {
                 $valueA = $mapA[$propertyName]
                 $valueB = if ($mapB.ContainsKey($propertyName)) { $mapB[$propertyName] } else { $null }
 
+                if ($TrackedProperties -and ((Test-ModelUnresolved $valueA) -or (Test-ModelUnresolved $valueB))) {
+                    $uncertainties.Add(@{ property = $propertyName; status = if (Test-ModelUnresolved $valueA) { 'Unresolved' } else { 'Unknown' } })
+                    continue
+                }
+                $comparedCount++
                 if (-not (Test-NormalizedEquality -Left $valueA -Right $valueB)) {
                     $drifts.Add(@{
                         property = $propertyName
@@ -468,11 +514,12 @@ try {
             }
 
             $entry.propertyComparison = @{
-                status        = if ($mapA.Count -eq 0) { 'No Comparable Properties' } elseif ($drifts.Count -eq 0) { 'All Properties Match' } else { 'Properties Drifted' }
-                comparedCount = $mapA.Count
+                status        = if ($comparedCount -eq 0) { 'No Comparable Properties' } elseif ($drifts.Count -gt 0) { 'Properties Drifted' } elseif ($uncertainties.Count -gt 0) { 'Incomplete' } else { 'All Properties Match' }
+                comparedCount = $comparedCount
                 driftCount    = $drifts.Count
                 drifts        = @($drifts)
             }
+            if ($TrackedProperties) { $entry.propertyComparison.uncertainties = @($uncertainties) }
         }
     }
 
@@ -493,7 +540,7 @@ try {
         }
     }
 
-    if ($CompareProperties.IsPresent) {
+    if ($CompareProperties.IsPresent -or $TrackedProperties.IsPresent) {
         $summary.resourcesWithPropertyDrift = 0
         $summary.propertyDriftCount = 0
         foreach ($entry in $comparisonMatches) {

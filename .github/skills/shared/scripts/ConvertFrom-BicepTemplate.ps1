@@ -38,6 +38,24 @@ param(
     [string]$ParamFile,
 
     [Parameter()]
+    [hashtable]$ParameterOverride = @{},
+
+    [Parameter()]
+    [string]$SubscriptionId,
+
+    [Parameter()]
+    [string]$ResourceGroup,
+
+    [Parameter()]
+    [string]$Location,
+
+    [Parameter()]
+    [switch]$ResolveDeterministicNames,
+
+    [Parameter()]
+    [switch]$MaskSecrets,
+
+    [Parameter()]
     [ValidateSet('shallow', 'standard', 'deep')]
     [string]$Depth = 'standard',
 
@@ -75,12 +93,12 @@ function Get-BicepCommand {
     [CmdletBinding()]
     param()
 
-    if (Get-Command -Name 'az' -ErrorAction SilentlyContinue) {
-        return @{ Executable = 'az'; Prefix = @('bicep') }
-    }
-
     if (Get-Command -Name 'bicep' -ErrorAction SilentlyContinue) {
         return @{ Executable = 'bicep'; Prefix = @() }
+    }
+
+    if (Get-Command -Name 'az' -ErrorAction SilentlyContinue) {
+        return @{ Executable = 'az'; Prefix = @('bicep') }
     }
 
     $null
@@ -104,7 +122,8 @@ function Invoke-BicepCli {
         return $false
     }
 
-    $commandArgs = $command.Prefix + @($SubCommand, '--file', $InputPath, '--outfile', $OutputPath)
+    $inputArgs = if ($command.Executable -eq 'az') { @('--file', $InputPath) } else { @($InputPath) }
+    $commandArgs = $command.Prefix + @($SubCommand) + $inputArgs + @('--outfile', $OutputPath)
 
     Write-Diag "Running 'bicep $SubCommand' with $($command.Executable)."
 
@@ -176,11 +195,15 @@ function Get-ParameterOverrides {
         throw "Parameter file not found: $ParameterFilePath"
     }
 
-    # Compile the .bicepparam to ARM parameters JSON so values keep their real types
-    # instead of being reconstructed from Bicep source text by hand.
-    $paramsJsonPath = Join-Path -Path $WorkingDirectory -ChildPath 'params.json'
-    if (-not (Invoke-BicepBuildParams -ParamPath $ParameterFilePath -OutputPath $paramsJsonPath)) {
-        throw 'Bicep CLI is unavailable for parameter compilation.'
+    $paramsJsonPath = $ParameterFilePath
+    if ([System.IO.Path]::GetExtension($ParameterFilePath) -eq '.bicepparam') {
+        $paramsJsonPath = Join-Path -Path $WorkingDirectory -ChildPath 'params.json'
+        if (-not (Invoke-BicepBuildParams -ParamPath $ParameterFilePath -OutputPath $paramsJsonPath)) {
+            throw 'Bicep CLI is unavailable for parameter compilation.'
+        }
+    }
+    elseif ([System.IO.Path]::GetExtension($ParameterFilePath) -ne '.json') {
+        throw 'Parameter files must be .bicepparam or ARM parameters .json documents.'
     }
 
     $content = Get-Content -LiteralPath $paramsJsonPath -Raw -ErrorAction Stop
@@ -189,12 +212,21 @@ function Get-ParameterOverrides {
     }
 
     $document = ConvertFrom-Json -InputObject $content
+    if (-not $document.PSObject.Properties['parameters'] -or $document.parameters -isnot [pscustomobject]) {
+        throw 'An ARM parameter document must contain a parameters object.'
+    }
     $overrides = @{}
     if ($document.PSObject.Properties['parameters'] -and $null -ne $document.parameters) {
         foreach ($property in $document.parameters.PSObject.Properties) {
             $entry = $property.Value
             if ($entry -is [System.Management.Automation.PSCustomObject] -and $entry.PSObject.Properties['value']) {
                 $overrides[$property.Name] = $entry.value
+            }
+            elseif ($entry -is [pscustomobject] -and $entry.PSObject.Properties['reference']) {
+                $overrides[$property.Name] = [ArmUnresolved]::new("secure reference for parameter $($property.Name)")
+            }
+            else {
+                throw "Parameter '$($property.Name)' must contain value or reference."
             }
         }
     }
@@ -300,11 +332,15 @@ function Add-ArmResourceModel {
                     name          = $nameText
                     sourceFile    = [string]$iterationScope.SourceFile
                     conditional   = ($hasCondition -or $iterationScope.ConditionUnknown)
+                    existenceUnknown = ($conditionUnknown -or $iterationScope.ConditionUnknown -or ($definition.Contains('copy') -and $count -is [ArmUnresolved]))
                     parent        = $ParentSymbolicName
                     resourceGroup = $iterationScope.ResourceGroupName
                     location      = (ConvertTo-ArmPlainValue $location)
                     properties    = if ($null -ne $properties) { ConvertTo-ArmPlainValue $properties } else { @{} }
                     tags          = if ($null -ne $tags) { ConvertTo-ArmPlainValue $tags } else { @{} }
+                    sku           = if ($definition.Contains('sku')) { ConvertTo-ArmPlainValue (Resolve-ArmValue $definition['sku'] $iterationScope) } else { @{} }
+                    kind          = if ($definition.Contains('kind')) { ConvertTo-ArmPlainValue (Resolve-ArmValue $definition['kind'] $iterationScope) } else { $null }
+                    identity      = if ($definition.Contains('identity')) { ConvertTo-ArmPlainValue (Resolve-ArmValue $definition['identity'] $iterationScope) } else { @{} }
                     relationships = @()
                 })
 
@@ -360,8 +396,9 @@ try {
 
         $template = ConvertTo-ArmObject (Get-Content -LiteralPath $armTemplatePath -Raw -ErrorAction Stop | ConvertFrom-Json)
         $suppliedParameters = ConvertTo-ArmObject (Get-ParameterOverrides -ParameterFilePath $resolvedParamFile -WorkingDirectory $temporaryDirectory)
-        $resourceGroupName = Get-ResourceGroupNameFromTemplatePath -TemplatePath $resolvedBicepFile
-        $subscriptionId = '<subscription-id>'
+        foreach ($key in $ParameterOverride.Keys) { $suppliedParameters[$key] = ConvertTo-ArmObject $ParameterOverride[$key] }
+        $resourceGroupName = if ($ResourceGroup) { $ResourceGroup } else { Get-ResourceGroupNameFromTemplatePath -TemplatePath $resolvedBicepFile }
+        $scopeSubscriptionId = if ($SubscriptionId) { $SubscriptionId } else { '<subscription-id>' }
         $sourceRoot = Split-Path -Path $resolvedBicepFile -Parent
         Push-Location -LiteralPath $sourceRoot
         try {
@@ -372,26 +409,60 @@ try {
         }
 
         # The 'location' parameter stands in for resourceGroup().location, which is unknown offline.
-        $location = [ArmUnresolved]::new('resource group location')
+        $scopeLocation = [ArmUnresolved]::new('resource group location')
         $locationKey = Find-ArmKey $suppliedParameters 'location'
         if ($null -ne $locationKey -and $suppliedParameters[$locationKey] -is [string]) {
-            $location = $suppliedParameters[$locationKey]
+            $scopeLocation = $suppliedParameters[$locationKey]
         }
         elseif ($template['parameters'] -is [System.Collections.IDictionary] -and $template['parameters'].Contains('location')) {
             $locationDefault = $template['parameters']['location']['defaultValue']
             if ($locationDefault -is [string] -and -not $locationDefault.StartsWith('[')) {
-                $location = $locationDefault
+                $scopeLocation = $locationDefault
             }
         }
 
-        $rootScope = New-ArmScope -Template $template -SubscriptionId $subscriptionId -ResourceGroupName $resourceGroupName `
-            -Location $location -Path '' -DeploymentName 'main' -SourceFile $sourceFile
-        Set-ArmScopeParameters -Scope $rootScope -Supplied $suppliedParameters
+        if ($Location) { $scopeLocation = $Location }
+        if ($MaskSecrets) {
+            foreach ($key in @($template['parameters'].Keys)) {
+                if ($template['parameters'][$key]['type'] -in @('secureString', 'secureObject')) {
+                    $suppliedParameters[$key] = [ArmUnresolved]::new("secure parameter $key")
+                }
+            }
+        }
+        $namingValues = @{}
+        for ($pass = 0; $pass -lt 5; $pass++) {
+            $rootScope = New-ArmScope -Template $template -SubscriptionId $scopeSubscriptionId -ResourceGroupName $resourceGroupName `
+                -Location $scopeLocation -Path '' -DeploymentName 'main' -SourceFile $sourceFile
+            $rootScope.NamingValues = $namingValues
+            $rootScope.NamingRequests = @{}
+            $rootScope.ResolveDeterministicNames = $ResolveDeterministicNames.IsPresent
+            Set-ArmScopeParameters -Scope $rootScope -Supplied $suppliedParameters
+            $resources = New-Object System.Collections.Generic.List[object]
+            $rootUsesNames = $template['resources'] -isnot [System.Collections.IDictionary]
+            Add-ArmResourceModel -Scope $rootScope -Definitions $rootScope.Symbols -Results $resources `
+                -IncludeProperties ($Depth -ne 'shallow') -UseNameAsSymbol $rootUsesNames
+            if ($rootScope.NamingRequests.Count -eq 0 -or $pass -eq 4) { break }
 
-        $resources = New-Object System.Collections.Generic.List[object]
-        $rootUsesNames = $template['resources'] -isnot [System.Collections.IDictionary]
-        Add-ArmResourceModel -Scope $rootScope -Definitions $rootScope.Symbols -Results $resources `
-            -IncludeProperties ($Depth -ne 'shallow') -UseNameAsSymbol $rootUsesNames
+            # Use Bicep's official evaluator in one batch, not a local imitation of ARM hashing.
+            $requests = @($rootScope.NamingRequests.Values)
+            $expressions = foreach ($request in $requests) {
+                $arguments = @($request.arguments | ForEach-Object { "'" + ([string]$_).Replace("'", "''").Replace('${', '\${') + "'" })
+                '{0}({1})' -f $request.name, ($arguments -join ', ')
+            }
+            $namingInput = Join-Path $temporaryDirectory 'naming.bicepparam'
+            $namingOutput = Join-Path $temporaryDirectory 'naming.json'
+            Set-Content -LiteralPath $namingInput -Value ("using none`nparam values = [`n" + ($expressions -join "`n") + "`n]") -Encoding utf8
+            $null = Invoke-BicepBuildParams -ParamPath $namingInput -OutputPath $namingOutput
+            $evaluated = (Get-Content -LiteralPath $namingOutput -Raw | ConvertFrom-Json).parameters.values.value
+            for ($i = 0; $i -lt $requests.Count; $i++) { $namingValues[$requests[$i].key] = $evaluated[$i] }
+        }
+        if ($MaskSecrets) {
+            foreach ($resource in $resources) {
+                foreach ($bag in @('properties', 'identity', 'tags')) {
+                    $resource.$bag = Protect-ArmValue $resource.$bag
+                }
+            }
+        }
 
         $resourceIndex = @{}
         foreach ($resource in $resources) {
@@ -421,6 +492,11 @@ try {
 
         $model = [ordered]@{
             resources = $resources.ToArray()
+            diagnostics = @{
+                unresolvedNames = $unresolvedNames.Count
+                missingParameters = @($rootScope.Params.Keys | Where-Object { $rootScope.Params[$_] -is [ArmUnresolved] })
+                namingBatches = $pass
+            }
         }
 
         Write-ResourceModel -Model $model -OutFile $OutFile
