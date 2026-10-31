@@ -244,10 +244,20 @@ function Test-NormalizedEquality {
 
         [Parameter()]
         [AllowNull()]
-        $Right
+        $Right,
+
+        [ValidateSet('exact', 'caseInsensitive', 'region')]
+        [string]$Normalization = 'exact'
     )
 
-    # Empty-collection equivalence: [], {}, null, '' and absent are all equal.
+    if ($Left -is [string] -and $Right -is [string]) {
+        switch ($Normalization) {
+            'caseInsensitive' { return [string]::Equals($Left, $Right, [System.StringComparison]::OrdinalIgnoreCase) }
+            'region' { return [string]::Equals(($Left -replace '\s', ''), ($Right -replace '\s', ''), [System.StringComparison]::OrdinalIgnoreCase) }
+            default { return [string]::Equals($Left, $Right, [System.StringComparison]::Ordinal) }
+        }
+    }
+    # Keep legacy empty-collection equivalence, without normalizing string values.
     $leftEmpty = Test-EmptyValue -Value $Left
     $rightEmpty = Test-EmptyValue -Value $Right
     if ($leftEmpty -or $rightEmpty) { return ($leftEmpty -and $rightEmpty) }
@@ -259,7 +269,6 @@ function Test-NormalizedEquality {
 
         $leftMap = ConvertTo-PropertyMap -Properties $Left
         $rightMap = ConvertTo-PropertyMap -Properties $Right
-        if ($leftMap.Count -ne $rightMap.Count) { return $false }
         foreach ($key in $leftMap.Keys) {
             if (-not $rightMap.ContainsKey($key)) { return $false }
             if (-not (Test-NormalizedEquality -Left $leftMap[$key] -Right $rightMap[$key])) { return $false }
@@ -291,12 +300,7 @@ function Test-NormalizedEquality {
     $rightNumber = ConvertTo-NormalizedNumber -Value $Right
     if ($null -ne $leftNumber -and $null -ne $rightNumber) { return $leftNumber -eq $rightNumber }
 
-    $leftText = ([string]$Left).Trim().ToLowerInvariant()
-    $rightText = ([string]$Right).Trim().ToLowerInvariant()
-    if ($leftText -eq $rightText) { return $true }
-
-    # Region-name normalization: 'West Europe' equals 'westeurope'.
-    ($leftText -replace '\s', '') -eq ($rightText -replace '\s', '')
+    [string]::Equals([string]$Left, [string]$Right, [System.StringComparison]::Ordinal)
 }
 
 function Get-PropertySeverity {
@@ -351,6 +355,10 @@ try {
 
     $baseA = Read-ResourceModel -InputFile $ModelA
     $baseB = Read-ResourceModel -InputFile $ModelB
+    if ($CompareProperties -and ($LabelA -eq 'Azure' -or $LabelB -eq 'Azure')) {
+        if ($LabelA -eq 'Bicep' -or $LabelB -eq 'Bicep') { $AzureIdentity = [switch]$true }
+        $TrackedProperties = [switch]$true
+    }
     $resourcesA = if ($baseA.resources) { @($baseA.resources) } else { @() }
     $resourcesB = if ($baseB.resources) { @($baseB.resources) } else { @() }
 
@@ -372,11 +380,16 @@ try {
         }
         foreach ($ra in $recordsA) {
             $id = [string](Get-ModelMember $ra.Resource 'id')
-            if ((Test-ModelUnresolved $id) -or (Get-ModelMember $ra.Resource 'existenceUnknown')) { continue }
+            if (Test-ModelUnresolved $id) { continue }
             if ($identityIndex.ContainsKey($id)) {
                 $rb = $identityIndex[$id]
                 if ($matchedB.Contains($rb)) { throw "Duplicate expected resource ID: $id" }
-                $comparisonMatches.Add(@{ status = 'In Sync'; resourceA = $ra.Resource; resourceB = $rb.Resource; note = 'Exact ARM identity match' })
+                $existence = [string](Get-ModelMember $rb.Resource 'existence')
+                $comparisonMatches.Add(@{
+                    status = if ($existence -eq 'Unknown' -or (Get-ModelMember $ra.Resource 'existenceUnknown')) { 'Unverified' } elseif ($existence -eq 'Absent') { "$LabelA Only" } else { 'In Sync' }
+                    existence = if ($existence) { $existence } else { 'Found' }
+                    resourceA = $ra.Resource; resourceB = $rb.Resource; note = 'Exact ARM identity match'
+                })
                 [void]$matchedA.Add($ra)
                 [void]$matchedB.Add($rb)
             }
@@ -465,7 +478,7 @@ try {
     foreach ($ra in $recordsA) {
         if ($matchedA.Contains($ra)) { continue }
         $uncertain = $AzureIdentity -and ((Test-ModelUnresolved (Get-ModelMember $ra.Resource 'id')) -or (Get-ModelMember $ra.Resource 'existenceUnknown'))
-        $comparisonMatches.Add(@{ status = if ($uncertain) { 'Unresolved' } else { "$LabelA Only" }; resourceA = $ra.Resource; resourceB = $null; note = if ($uncertain) { 'Expected identity or existence cannot be resolved' } else { 'Present only in first model' } })
+        $comparisonMatches.Add(@{ status = if ($uncertain) { 'Unresolved' } else { "$LabelA Only" }; existence = if ($uncertain) { 'Unknown' } else { 'Absent' }; resourceA = $ra.Resource; resourceB = $null; note = if ($uncertain) { 'Expected identity or existence cannot be resolved' } else { 'Present only in first model' } })
     }
 
     foreach ($rb in $recordsB) {
@@ -485,11 +498,8 @@ try {
             $mapB = ConvertTo-PropertyMap -Properties $propertiesB
 
             if ($TrackedProperties) {
-                $mapA = Get-TrackedProperty -Resource $entry.resourceA -Configuration $propertyConfig
-                $projected = Get-ModelMember $entry.resourceB 'comparisonProperties'
-                $mapB = if ($null -ne $projected) { ConvertTo-PropertyMap $projected } else {
-                    Get-TrackedProperty -Resource $entry.resourceB -Configuration $propertyConfig -PropertyName @($mapA.Keys)
-                }
+                $mapA = Get-ComparisonProperty -Resource $entry.resourceA -Configuration $propertyConfig
+                $mapB = Get-ComparisonProperty -Resource $entry.resourceB -Configuration $propertyConfig -PropertyName @($mapA.Keys)
             }
             $drifts = [System.Collections.Generic.List[object]]::new()
             $uncertainties = [System.Collections.Generic.List[object]]::new()
@@ -498,12 +508,13 @@ try {
                 $valueA = $mapA[$propertyName]
                 $valueB = if ($mapB.ContainsKey($propertyName)) { $mapB[$propertyName] } else { $null }
 
-                if ($TrackedProperties -and ((Test-ModelUnresolved $valueA) -or (Test-ModelUnresolved $valueB))) {
+                if ((Test-ModelUnresolved $valueA) -or (Test-ModelUnresolved $valueB)) {
                     $uncertainties.Add(@{ property = $propertyName; status = if (Test-ModelUnresolved $valueA) { 'Unresolved' } else { 'Unknown' } })
                     continue
                 }
                 $comparedCount++
-                if (-not (Test-NormalizedEquality -Left $valueA -Right $valueB)) {
+                $normalization = Get-PropertyNormalization -Configuration $propertyConfig -ResourceType $entry.resourceA.type -PropertyName $propertyName
+                if (-not (Test-NormalizedEquality -Left $valueA -Right $valueB -Normalization $normalization)) {
                     $drifts.Add(@{
                         property = $propertyName
                         valueA   = $valueA
@@ -514,12 +525,14 @@ try {
             }
 
             $entry.propertyComparison = @{
-                status        = if ($comparedCount -eq 0) { 'No Comparable Properties' } elseif ($drifts.Count -gt 0) { 'Properties Drifted' } elseif ($uncertainties.Count -gt 0) { 'Incomplete' } else { 'All Properties Match' }
+                status        = if ($uncertainties.Count -gt 0) { 'Incomplete' } elseif ($comparedCount -eq 0) { 'No Comparable Properties' } elseif ($drifts.Count -gt 0) { 'Properties Drifted' } else { 'All Properties Match' }
                 comparedCount = $comparedCount
                 driftCount    = $drifts.Count
                 drifts        = @($drifts)
             }
-            if ($TrackedProperties) { $entry.propertyComparison.uncertainties = @($uncertainties) }
+            $entry.propertyComparison.uncertainties = @($uncertainties)
+            $sources = Get-ModelMember $entry.resourceA 'propertySources'
+            if ($null -ne $sources) { $entry.propertyComparison.propertySources = $sources }
         }
     }
 
@@ -529,6 +542,10 @@ try {
         inSyncNameDiff = 0
         onlyA          = 0
         onlyB          = 0
+        confirmedMatch = 0
+        incompleteComparison = 0
+        noComparableProperties = 0
+        unverified = 0
     }
 
     foreach ($entry in $comparisonMatches) {
@@ -537,6 +554,14 @@ try {
             'In Sync (name differs)' { $summary.inSyncNameDiff++ }
             "$LabelA Only" { $summary.onlyA++ }
             "$LabelB Only" { $summary.onlyB++ }
+        }
+        if ($entry.status -in @('Unresolved', 'Unverified')) { $summary.unverified++ }
+        elseif ($entry.ContainsKey('propertyComparison')) {
+            switch ($entry.propertyComparison.status) {
+                'All Properties Match' { $summary.confirmedMatch++ }
+                'Incomplete' { $summary.incompleteComparison++; $summary.unverified++ }
+                'No Comparable Properties' { $summary.noComparableProperties++ }
+            }
         }
     }
 

@@ -17,6 +17,9 @@ pwsh .github/skills/shared/scripts/Get-AzureResourceModel.ps1 -ResourceGroup <rg
 
 # Offline mode from a captured `az resource list` payload
 pwsh .github/skills/shared/scripts/Get-AzureResourceModel.ps1 -FromJson <captured.json> -Enrich -Mode diagram -OutFile <path>
+
+# Expected-aware Bicep drift discovery (same path as the fast workflow)
+pwsh .github/skills/shared/scripts/Get-AzureResourceModel.ps1 -SubscriptionId <sub-id> [-ResourceGroup <rg-name>] -ExpectedModel <filtered-expected.json> -Mode bicep -ManagementEndpoint <active-cloud-resource-manager-endpoint> -OutFile <path>
 ```
 
 ## Parameters
@@ -28,6 +31,9 @@ pwsh .github/skills/shared/scripts/Get-AzureResourceModel.ps1 -FromJson <capture
 - `-FromJson` — offline mode: path to a captured `az resource list` (or equivalent) JSON payload; no Azure session required
 - `-Mode` — optional filter mode (`diagram` or `bicep`); when provided, the script invokes `Select-AzureResources.ps1` on the model before returning it (see `.github/skills/shared/procedures/resource-filtering.md`)
 - `-OutFile` — optional output path; otherwise JSON is written to stdout
+- `-ExpectedModel` — drift-only expected-aware discovery. Requires an explicit subscription and **Azure CLI authentication**, even when Az PowerShell is installed/authenticated. Scope/inventory/token calls all use that CLI session. Optional resource group restricts inventory; otherwise inventories the selected subscription.
+- `-ManagementEndpoint` — ARM endpoint from `az cloud show --query endpoints.resourceManager -o json`, default public Azure
+- `-ThrottleLimit`, `-MaxRetry`, `-TimeoutSeconds` — bounded detail-request concurrency, retries and timeouts for expected-aware discovery
 
 ## Output
 
@@ -52,6 +58,7 @@ pwsh .github/skills/shared/scripts/Get-AzureResourceModel.ps1 -FromJson <capture
 - Drift-detection skills should invoke with `-Enrich -Mode diagram|bicep` so the returned model is already enriched and filtered — no separate `Select-AzureResources.ps1` call is needed.
 - Enrichment issues one detail call per resource; expect proportional runtime on large scopes. Progress is reported on stderr.
 - Subscription-level discovery can be noisy — warn the user before comparing an entire subscription.
+- Bicep drift paths use `-ExpectedModel`, not legacy enrichment. Inventory confirms existence separately from configuration. Detail GETs use the declared API version, with provider-version fallback when necessary. Confirmed 404 resource absence is `Absent`; 403, exhausted 429, and unavailable reads are `Unknown` existence unless inventory already established `Found`. Projected property values become `unknown` and read errors appear in `issues`; tokens/raw responses are not persisted. An inventory/authentication failure remains a hard failure.
 - If `pwsh`/`powershell.exe` or the script is unavailable, use the inline fallback below.
 
 ## Script Unavailable — Inline Fallback

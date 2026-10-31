@@ -1,6 +1,6 @@
 ---
 name: azv-diagram-drift-detection
-description: Detect drift between a Draw.io Azure architecture diagram and a live Azure environment. Supports quick mode (existence check) and deep mode (existence plus property-level comparison with severity classification), then offers resolution — update the diagram, update Azure, resolve per property, or selectively resolve per resource. Replaces the former azv-diagram-azure-sync and azv-diagram-azure-sync-deep skills.
+description: Detect existence drift and compare explicitly expected diagram configuration against a live Azure environment. Supports quick existence-only and deep property comparison, then offers resolution — update the diagram, update Azure, resolve per property, or selectively resolve per resource. Replaces the former azv-diagram-azure-sync and azv-diagram-azure-sync-deep skills.
 license: MIT
 compatibility: Requires an authenticated Azure session (CLI, Az PowerShell, or Azure MCP).
 metadata:
@@ -8,7 +8,7 @@ metadata:
   project: AzVerify
 ---
 
-Compare a Draw.io Azure architecture diagram against a live Azure environment and resolve the drift that is found. Supports two modes: **quick** (existence-level) and **deep** (existence plus property-level comparison of every tracked configuration property).
+Compare a Draw.io Azure architecture diagram against a live Azure environment and resolve the drift that is found. Supports two modes: **quick** (existence only) and **deep** (existence plus comparison of explicitly expected configuration properties).
 
 **Input**: A Draw.io diagram file (`.drawio` or `.drawio.xml`) and an Azure scope — a resource group name or subscription ID. The user can specify both, or the skill will prompt for missing inputs.
 
@@ -67,8 +67,8 @@ Identify the comparison depth, the Draw.io diagram, and the Azure scope.
 
 #### 2a. Identify Comparison Depth
 
-- **Quick** (default): existence-level comparison only — are the right resources deployed?
-- **Deep**: existence plus property-level comparison — checks every tracked configuration property (SKU, tier, size, security settings) against expected values from `azure-property-paths.json`
+- **Quick** (default): existence-only comparison — are the right resources deployed? It does not check configuration.
+- **Deep**: compare existence plus configuration values explicitly supplied as diagram annotations or by the diagram's selected baseline (see `procedures/diagram-parsing.md`). Only those expected properties are compared; `azure-property-paths.json` supplies tracked property names and Azure retrieval paths, not default expected values.
 
 If the user says "deep", "detailed", "full", "property", or "configuration" → use deep mode. Otherwise default to quick, and mention that deep mode is available.
 
@@ -101,6 +101,7 @@ If the user says "deep", "detailed", "full", "property", or "configuration" → 
 Run `pwsh .github/skills/shared/scripts/ConvertFrom-DrawioDiagram.ps1 -DiagramPath <diagram-file> -OutFile <work-dir>/diagram-model.json` — see `.github/skills/shared/procedures/diagram-parsing.md` for the script contract. If the script exits non-zero or produces output that is not valid JSON, use the fallback method in the contract.
 
 Report the parsed resource count. Display the model as a table (columns: #, Resource, Type, Container) only when it stays within the output thresholds in `output-budget.md`.
+For deep mode, also report how many expected configuration properties came from annotations and the selected baseline. If none are present, state that configuration is not assessed; do not imply that quick mode checks configuration.
 
 ### 4. Discover the Azure Environment
 
@@ -136,27 +137,31 @@ pwsh .github/skills/shared/scripts/Compare-ResourceModels.ps1 -ModelA <work-dir>
 ```
 
 Use the emitted match report as the authoritative comparison result. Existence-level classifications: **In Sync**, **In Sync (name differs)**, **Diagram Only**, **Azure Only**.
+The comparator carries `propertySources` in each property comparison and uses the diagram's explicit `comparisonProperties` expectations. For the **Not specified — not assessed** coverage list, compare those keys with the tracked property names in `azure-property-paths.json`.
 
 **Deep mode additions** — the report's `propertyComparison` object per matched resource gives:
-- Expected values taken from the diagram model where the diagram specifies them, otherwise the defaults in `azure-property-paths.json` (record which source applied so the report can show it)
+- Expected values supplied by the diagram model, and their provenance from its `propertySources` map (`annotation` or `selectedBaseline:<name>`)
 - Drifted properties with expected value, actual Azure value, and severity
-- Refined matched-resource status: **In Sync (all properties match)** or **In Sync (properties drifted)**
+- Refined matched-resource status: **In Sync (all specified properties match)** or **In Sync (properties drifted)**
+- `Incomplete` when any specified expectation is unknown/unresolved; this never means confirmed configuration agreement
 
 Handle the two edge cases explicitly:
 - A property whose actual value is `unknown` (retrieval failed in Step 4) is reported as `⚠️ Unknown` — never classified as matching or drifting.
 - A matched resource with no comparable tracked properties is reported as `No Comparable Properties`, not as in sync.
+- For each matched resource, explicitly report tracked properties with no diagram annotation or selected-baseline expectation as **Not specified — not assessed**. Do not infer defaults from the retrieval mapping or describe an existence-only report as a configuration check.
 
 ### 6. Present the Drift Report
 
-**Quick mode**: summary table (In Sync / Diagram Only / Azure Only counts) plus a details table (Resource, Type, Status, Notes).
+**Quick mode**: existence-only summary table (In Sync / Diagram Only / Azure Only counts) plus a details table (Resource, Type, Status, Notes). State that configuration was not checked.
 
 **Deep mode**: two-tier report.
 - **Tier 1 — Summary** with columns: Resource, Type, Existence, Critical, Warning, Info.
-- **Tier 2 — Per-resource property diffs** with columns: Property, Expected, Actual, Severity, Source (`diagram` or `default`).
+- **Tier 2 — Per-resource property diffs** with columns: Property, Expected, Actual, Severity, Source (`annotation` or `selectedBaseline:<name>`).
+- Include a separate **Not specified — not assessed** list per resource for tracked properties without an expected value. This is a coverage gap, not drift. If no expected configuration values were supplied, say so plainly; deep mode still reports existence.
 
 > **CRITICAL**: property drift tables MUST contain **only** properties where expected ≠ actual after normalization. Properties that match belong in a separate "Confirmed In Sync" table (columns: Property, Value). Never mix matching and drifting properties in the same table.
 
-**If fully in sync** (existence, and properties in deep mode): report "✅ Fully in sync!" and stop.
+**If fully in sync**: quick mode may say "Existence matches; configuration was not checked." Deep mode may say "All specified configuration expectations match" only if every specified value was verified and at least one was compared; disclose all unassessed properties. Never call an existence-only or incomplete deep-mode result fully configuration-synchronized.
 
 **If drift is detected**, proceed to Step 7.
 

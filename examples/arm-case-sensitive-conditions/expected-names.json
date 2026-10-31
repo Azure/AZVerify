@@ -1,0 +1,6 @@
+[
+  "Microsoft.ManagedIdentity/userAssignedIdentities|equals-exact-case",
+  "Microsoft.ManagedIdentity/userAssignedIdentities|string-exact-case",
+  "Microsoft.ManagedIdentity/userAssignedIdentities|array-exact-case",
+  "Microsoft.ManagedIdentity/userAssignedIdentities|object-key-ignore-case"
+]

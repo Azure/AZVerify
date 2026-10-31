@@ -16,7 +16,9 @@ Optional path to write the JSON resource model. If omitted, output is written to
 .OUTPUTS
 System.Management.Automation.PSCustomObject
 .NOTES
-Icon-only cells (id ending with '-icon') and edge cells are skipped.
+Icon-only cells (id ending with '-icon') and edge cells are skipped. Optional diagram
+configuration metadata supplies annotated expected properties and values from a
+selected diagram baseline. Annotations take precedence over baseline values.
 .EXAMPLE
 pwsh ConvertFrom-DrawioDiagram.ps1 -DiagramPath architecture.drawio
 .EXAMPLE
@@ -150,6 +152,175 @@ function Get-NormalizedName {
     [System.Net.WebUtility]::HtmlDecode($Value).Replace("`r", '').Replace("`n", ' ').Trim()
 }
 
+function Get-CellMetadataAttribute {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)]
+        [System.Xml.XmlElement]$Cell,
+
+        [Parameter(Mandatory = $true)]
+        [string]$Name
+    )
+
+    if ($Cell.HasAttribute($Name) -and -not [string]::IsNullOrWhiteSpace($Cell.GetAttribute($Name))) {
+        return $Cell.GetAttribute($Name)
+    }
+
+    $wrapper = $Cell.ParentNode
+    if ($wrapper -is [System.Xml.XmlElement] -and $wrapper.LocalName -in @('object', 'UserObject')) {
+        $wrapperAttribute = if ($Name -eq 'value') { 'label' } else { $Name }
+        if ($wrapper.HasAttribute($wrapperAttribute)) {
+            return $wrapper.GetAttribute($wrapperAttribute)
+        }
+    }
+
+    if ($Cell.HasAttribute($Name)) { return $Cell.GetAttribute($Name) }
+    ''
+}
+
+function ConvertFrom-JsonObject {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Json,
+
+        [Parameter(Mandatory = $true)]
+        [string]$Description
+    )
+
+    try {
+        $value = ConvertFrom-Json -InputObject $Json -ErrorAction Stop
+    }
+    catch {
+        throw "Invalid JSON in $Description metadata: $($_.Exception.Message)"
+    }
+
+    if ($null -eq $value -or $value -isnot [System.Management.Automation.PSCustomObject]) {
+        throw "$Description metadata must be a JSON object."
+    }
+
+    $value
+}
+
+function Get-DiagramConfiguration {
+    [CmdletBinding()]
+    param(
+        [Parameter()]
+        [System.Xml.XmlElement]$Diagram
+    )
+
+    if ($null -eq $Diagram -or -not $Diagram.HasAttribute('azverifyConfig')) {
+        return $null
+    }
+
+    $configuration = ConvertFrom-JsonObject -Json $Diagram.GetAttribute('azverifyConfig') -Description 'azverifyConfig'
+    if (-not $configuration.PSObject.Properties['version'] -or [int]$configuration.version -ne 1) {
+        throw 'azverifyConfig metadata must declare version 1.'
+    }
+
+    if (-not $configuration.PSObject.Properties['selectedBaseline']) {
+        throw 'azverifyConfig metadata must declare selectedBaseline.'
+    }
+
+    $baselineName = [string]$configuration.selectedBaseline
+    if ([string]::IsNullOrWhiteSpace($baselineName)) {
+        return $configuration
+    }
+
+    if (-not $configuration.PSObject.Properties['baselines'] -or
+        -not $configuration.baselines.PSObject.Properties[$baselineName]) {
+        throw "Selected diagram baseline '$baselineName' is not defined in azverifyConfig.baselines."
+    }
+
+    $selectedBaseline = $configuration.baselines.PSObject.Properties[$baselineName].Value
+    if ($null -eq $selectedBaseline -or
+        -not $selectedBaseline.PSObject.Properties['resources'] -or
+        $selectedBaseline.resources -isnot [System.Management.Automation.PSCustomObject]) {
+        throw "Selected diagram baseline '$baselineName' must define a resources object."
+    }
+
+    $configuration
+}
+
+function Get-ExpectedPropertiesForCell {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)]
+        [System.Xml.XmlElement]$Cell,
+
+        [Parameter(Mandatory = $true)]
+        [string]$ResourceId,
+
+        [Parameter(Mandatory = $true)]
+        [string]$ResourceType,
+
+        [Parameter()]
+        [object]$Configuration,
+
+        [Parameter(Mandatory = $true)]
+        [object]$PropertyConfiguration
+    )
+
+    $baselineValues = [ordered]@{}
+    $baselineName = $null
+    if ($Configuration -and -not [string]::IsNullOrWhiteSpace([string]$Configuration.selectedBaseline)) {
+        $baselineName = [string]$Configuration.selectedBaseline
+        $resourceBaselines = $Configuration.baselines.PSObject.Properties[$baselineName].Value.resources
+
+        foreach ($lookupKey in @($ResourceType, $ResourceId)) {
+            $baselineEntry = $resourceBaselines.PSObject.Properties[$lookupKey]
+            if ($baselineEntry) {
+                if ($baselineEntry.Value -isnot [System.Management.Automation.PSCustomObject]) {
+                    throw "Baseline values for '$lookupKey' must be a JSON object."
+                }
+
+                foreach ($property in $baselineEntry.Value.PSObject.Properties) {
+                    $baselineValues[$property.Name] = $property.Value
+                }
+            }
+        }
+    }
+
+    $annotationValues = $null
+    $annotationJson = Get-CellMetadataAttribute -Cell $Cell -Name 'azverifyProperties'
+    if (-not [string]::IsNullOrWhiteSpace($annotationJson)) {
+        $annotationValues = ConvertFrom-JsonObject -Json $annotationJson -Description "azverifyProperties for resource '$ResourceId'"
+    }
+
+    $expectedProperties = [ordered]@{}
+    $propertySources = [ordered]@{}
+
+    foreach ($property in $baselineValues.Keys) {
+        $expectedProperties[$property] = $baselineValues[$property]
+        $propertySources[$property] = "selectedBaseline:$baselineName"
+    }
+
+    if ($annotationValues) {
+        foreach ($property in $annotationValues.PSObject.Properties) {
+            $expectedProperties[$property.Name] = $property.Value
+            $propertySources[$property.Name] = 'annotation'
+        }
+    }
+
+    $allowedProperties = @($PropertyConfiguration.globalSkuRules |
+        Where-Object { $ResourceType -like $_.resourceTypePattern } |
+        ForEach-Object { $_.property })
+    $allowedProperties += @($PropertyConfiguration.resourceTypes |
+        Where-Object { $_.resourceType -eq $ResourceType } |
+        ForEach-Object { $_.properties } |
+        ForEach-Object { $_.name })
+    foreach ($property in $expectedProperties.Keys) {
+        if ($property -notin $allowedProperties) {
+            throw "Unknown tracked property '$property' for diagram resource '$ResourceId' ($ResourceType)."
+        }
+    }
+
+    [PSCustomObject]@{
+        Values  = $expectedProperties
+        Sources = $propertySources
+    }
+}
+
 try {
     if (-not (Test-Path -LiteralPath $DiagramPath)) {
         Invoke-Exit -Code 1 -Message "Diagram file not found: $DiagramPath"
@@ -160,6 +331,7 @@ try {
     }
 
     $mapping = Get-Content -LiteralPath $StencilMapping -Raw -ErrorAction Stop | ConvertFrom-Json
+    $propertyConfiguration = Get-Content -LiteralPath (Join-Path $PSScriptRoot '../data/azure-property-paths.json') -Raw -ErrorAction Stop | ConvertFrom-Json
     $reverseLookup = @{}
 
     foreach ($entry in $mapping.resourceTypes.PSObject.Properties) {
@@ -215,7 +387,7 @@ try {
     $cells = @($diagramXml.SelectNodes('//*[local-name()="mxCell"]'))
     $cellById = @{}
     foreach ($cell in $cells) {
-        $cellId = $cell.GetAttribute('id')
+        $cellId = Get-CellMetadataAttribute -Cell $cell -Name 'id'
         if ($cellId) { $cellById[$cellId] = $cell }
     }
 
@@ -224,11 +396,11 @@ try {
     $parentByResourceId = @{}
 
     foreach ($cell in $cells) {
-        $id = Get-AttributeValue -Node $cell -Name 'id'
+        $id = Get-CellMetadataAttribute -Cell $cell -Name 'id'
         $style = Get-AttributeValue -Node $cell -Name 'style'
         $edge = Get-AttributeValue -Node $cell -Name 'edge'
         $parent = Get-AttributeValue -Node $cell -Name 'parent'
-        $value = Get-AttributeValue -Node $cell -Name 'value'
+        $value = Get-CellMetadataAttribute -Cell $cell -Name 'value'
         $imagePath = $null
 
         if ($style -and $style -match 'image=([^;]+)') {
@@ -279,13 +451,27 @@ try {
             relationships = @()
         }
 
+        $diagramNode = $cell
+        while ($diagramNode -and $diagramNode.LocalName -ne 'diagram') {
+            $diagramNode = $diagramNode.ParentNode
+        }
+        $diagramConfiguration = Get-DiagramConfiguration -Diagram $diagramNode
+        $expected = Get-ExpectedPropertiesForCell -Cell $cell -ResourceId $id -ResourceType $type -Configuration $diagramConfiguration -PropertyConfiguration $propertyConfiguration
+        foreach ($property in $expected.Values.Keys) {
+            $resource.properties[$property] = $expected.Values[$property]
+        }
+        $resource.comparisonProperties = $expected.Values
+        if ($expected.Sources.Count -gt 0) {
+            $resource.propertySources = $expected.Sources
+        }
+
         $containerName = $null
         if ($parent -and $parent -ne '1') {
             $containerCell = $cellById[$parent]
             if ($containerCell) {
                 $containerName = Get-NormalizedName -Value (Get-AttributeValue -Node $containerCell -Name 'value')
                 if ([string]::IsNullOrWhiteSpace($containerName)) {
-                    $containerName = (Get-AttributeValue -Node $containerCell -Name 'id')
+                    $containerName = (Get-CellMetadataAttribute -Cell $containerCell -Name 'id')
                 }
 
                 $resource.properties.containerName = $containerName

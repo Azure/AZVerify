@@ -37,7 +37,7 @@ function Invoke-ArmRead {
         $delay = [int][Math]::Pow(2, $attempt)
         try {
             $response = Invoke-WebRequest -Uri $Uri -Method Get -UseBasicParsing `
-                -Headers @{ Authorization = "Bearer $Token" } -TimeoutSec $TimeoutSeconds -ErrorAction Stop
+                -Headers @{ Authorization = ('Bearer ' + $Token) } -TimeoutSec $TimeoutSeconds -ErrorAction Stop
             $data = $response.Content | ConvertFrom-Json -ErrorAction Stop
             return [pscustomobject]@{ status = 'Found'; data = $data; errorCode = $null; requests = $attempt + 1; retries = $attempt }
         }

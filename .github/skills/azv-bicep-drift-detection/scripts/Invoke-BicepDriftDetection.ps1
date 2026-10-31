@@ -22,7 +22,7 @@ Target subscription ID. Required so every request is explicitly scoped.
 .PARAMETER Location
 Optional deployment location used when resolving expressions. Defaults to the resource group location.
 .PARAMETER Backend
-Authentication backend preference for the auth probe.
+AzureCLI only. Auto selects AzureCLI; AzPowerShell is rejected before authentication.
 .PARAMETER OutputDirectory
 Directory for the report and intermediate files. Defaults to .azverify-tmp in the current directory.
 .PARAMETER ThrottleLimit
@@ -75,13 +75,17 @@ function Stop-Run {
 }
 
 try {
+    if ($Backend -eq 'AzPowerShell') { Stop-Run 'Expected-aware drift detection requires Azure CLI authentication. Use az login and -Backend AzureCLI.' }
     Write-Progress -Activity 'Bicep drift detection' -Status 'Checking authentication'
-    & (Join-Path $shared 'Test-AzureAuth.ps1') -Backend $Backend -SubscriptionId $SubscriptionId -OutFile $paths.Auth 2>$null
+    & (Join-Path $shared 'Test-AzureAuth.ps1') -Backend AzureCLI -SubscriptionId $SubscriptionId -OutFile $paths.Auth 2>$null
     if ($LASTEXITCODE -ne 0) { Stop-Run 'Not authenticated to Azure for the requested subscription. Sign in (az login) and retry.' }
 
     $groupJson = az group show --name $ResourceGroup --subscription $SubscriptionId --output json 2>$null
     if ($LASTEXITCODE -ne 0 -or -not $groupJson) { Stop-Run "Resource group '$ResourceGroup' was not found or is not readable in subscription '$SubscriptionId'." }
     $group = $groupJson | ConvertFrom-Json
+    $cloudJson = az cloud show --query endpoints.resourceManager --output json 2>$null
+    if ($LASTEXITCODE -ne 0 -or -not $cloudJson) { Stop-Run 'Azure CLI could not determine the active Resource Manager endpoint.' }
+    $managementEndpoint = [string]($cloudJson | ConvertFrom-Json)
     if (-not $Location) { $Location = [string]$group.location }
 
     Write-Progress -Activity 'Bicep drift detection' -Status 'Parsing Bicep'
@@ -99,7 +103,7 @@ try {
 
     Write-Progress -Activity 'Bicep drift detection' -Status 'Reading Azure (read-only)'
     & (Join-Path $shared 'Get-AzureResourceModel.ps1') -ResourceGroup $ResourceGroup -SubscriptionId $SubscriptionId `
-        -ExpectedModel $paths.Filtered -Mode bicep -ThrottleLimit $ThrottleLimit -MaxRetry $MaxRetry -OutFile $paths.Actual 2>$null
+        -ExpectedModel $paths.Filtered -Mode bicep -ManagementEndpoint $managementEndpoint -ThrottleLimit $ThrottleLimit -MaxRetry $MaxRetry -OutFile $paths.Actual 2>$null
     if ($LASTEXITCODE -ne 0) { Stop-Run 'Azure discovery failed (inventory could not be read).' }
     $actual = Get-Content -LiteralPath $paths.Actual -Raw | ConvertFrom-Json
 
@@ -122,16 +126,20 @@ $modify = [System.Collections.Generic.List[object]]::new()
 $extra = [System.Collections.Generic.List[object]]::new()
 $unresolved = [System.Collections.Generic.List[object]]::new()
 $noChange = 0
+$noComparable = 0
 $uncertainCount = 0
 foreach ($entry in @($comparison.matches)) {
     switch ($entry.status) {
         'Bicep Only' { $create.Add($entry.resourceA) }
         'Azure Only' { $extra.Add($entry.resourceB) }
         'Unresolved' { $unresolved.Add($entry.resourceA) }
+        'Unverified' { $unresolved.Add($entry.resourceA) }
         default {
             $propertyComparison = if ($entry.PSObject.Properties['propertyComparison']) { $entry.propertyComparison } else { $null }
-            if ($propertyComparison -and @($propertyComparison.drifts).Count -gt 0) { $modify.Add($entry) }
-            else { $noChange++ }
+            if (-not $propertyComparison -or $propertyComparison.status -eq 'No Comparable Properties') { $noComparable++ }
+            elseif ($propertyComparison.status -eq 'Incomplete') { $unresolved.Add($entry.resourceA) }
+            elseif (@($propertyComparison.drifts).Count -gt 0) { $modify.Add($entry) }
+            elseif ($propertyComparison.status -eq 'All Properties Match') { $noChange++ }
             if ($propertyComparison -and $propertyComparison.PSObject.Properties['uncertainties']) { $uncertainCount += @($propertyComparison.uncertainties).Count }
         }
     }
@@ -140,10 +148,12 @@ foreach ($entry in @($comparison.matches)) {
 $unresolvedNames = if ($diagnostics) { [int]$diagnostics.unresolvedNames } else { 0 }
 $missingParameters = @(if ($diagnostics) { $diagnostics.missingParameters })
 $incompleteReasons = [System.Collections.Generic.List[string]]::new()
-if ($unresolved.Count -gt 0 -or $unresolvedNames -gt 0) { $incompleteReasons.Add("$([Math]::Max($unresolved.Count, $unresolvedNames)) expected resource name(s) could not be resolved") }
+if ($unresolvedNames -gt 0) { $incompleteReasons.Add("$unresolvedNames expected resource name(s) could not be resolved") }
+if ($unresolved.Count -gt 0) { $incompleteReasons.Add("$($unresolved.Count) resource comparison(s) could not be verified") }
 if ($missingParameters.Count -gt 0) { $incompleteReasons.Add("parameters without values: $($missingParameters -join ', ')") }
 if ($issues.Count -gt 0) { $incompleteReasons.Add("$($issues.Count) Azure read(s) unavailable") }
 if ($uncertainCount -gt 0) { $incompleteReasons.Add("$uncertainCount property value(s) unknown or unresolved") }
+if ($noComparable -gt 0) { $incompleteReasons.Add("$noComparable resource(s) have no comparable expected properties") }
 $status = if ($incompleteReasons.Count -gt 0) { 'INCOMPLETE' } else { 'COMPLETE' }
 
 $report = [System.Text.StringBuilder]::new()
@@ -161,8 +171,19 @@ if ($status -eq 'INCOMPLETE') {
 [void]$report.AppendLine("| Create (in Bicep, not in Azure) | $($create.Count) |")
 [void]$report.AppendLine("| Modify (property drift) | $($modify.Count) |")
 [void]$report.AppendLine("| Not in template (in Azure only) | $($extra.Count) |")
-[void]$report.AppendLine("| Unverified | $($unresolved.Count + $issues.Count) |")
+[void]$report.AppendLine("| Unverified | $($unresolved.Count) |")
+[void]$report.AppendLine("| No comparable properties (existence only) | $noComparable |")
 [void]$report.AppendLine("| No change | $noChange |")
+
+if ($noComparable -gt 0) {
+    [void]$report.AppendLine(); [void]$report.AppendLine('## No Comparable Properties')
+    foreach ($entry in @($comparison.matches | Where-Object {
+        $_.status -in @('In Sync', 'In Sync (name differs)') -and
+        (-not $_.PSObject.Properties['propertyComparison'] -or $_.propertyComparison.status -eq 'No Comparable Properties')
+    })) {
+        [void]$report.AppendLine("- ``$($entry.resourceA.type)`` ``$($entry.resourceA.name)``: configuration was not assessed")
+    }
+}
 
 if ($create.Count -gt 0) {
     [void]$report.AppendLine(); [void]$report.AppendLine('## Create')
@@ -184,8 +205,16 @@ if ($extra.Count -gt 0) {
 }
 if ($unresolved.Count -gt 0 -or $issues.Count -gt 0) {
     [void]$report.AppendLine(); [void]$report.AppendLine('## Unverified')
-    foreach ($resource in $unresolved) { [void]$report.AppendLine("- ``$($resource.type)`` ``$($resource.name)``: identity not resolvable") }
-    foreach ($issue in $issues) { [void]$report.AppendLine("- ``$($issue.resourceId)``: $($issue.errorCode)") }
+    foreach ($resource in $unresolved) {
+        $resourceIssues = @($issues | Where-Object { $_.resourceId -eq $resource.id })
+        $reason = if ($resourceIssues.Count -gt 0) { @($resourceIssues | ForEach-Object { $_.errorCode }) -join ', ' } else { 'identity, existence or configuration could not be verified' }
+        [void]$report.AppendLine("- ``$($resource.type)`` ``$($resource.name)``: $reason")
+        foreach ($entry in @($comparison.matches | Where-Object { $_.resourceA -and $_.resourceA.id -eq $resource.id -and $_.PSObject.Properties['propertyComparison'] })) {
+            foreach ($drift in @($entry.propertyComparison.drifts)) {
+                [void]$report.AppendLine("  - Confirmed drift in ``$($drift.property)``: Bicep ``$(ConvertTo-Json -InputObject $drift.valueA -Compress -Depth 5)`` vs Azure ``$(ConvertTo-Json -InputObject $drift.valueB -Compress -Depth 5)`` (other expectations remain unverified)")
+            }
+        }
+    }
 }
 $elapsed = [Math]::Round($timer.Elapsed.TotalSeconds, 1)
 $requestText = if ($metrics) { ", $($metrics.armRequests) ARM request(s), $($metrics.retries) retries" } else { '' }
@@ -195,7 +224,7 @@ Set-Content -LiteralPath $paths.Report -Value $report.ToString() -Encoding utf8
 $summary = [ordered]@{
     status = $status; subscriptionId = $SubscriptionId; resourceGroup = $ResourceGroup
     create = $create.Count; modify = $modify.Count; notInTemplate = $extra.Count
-    unverified = $unresolved.Count + $issues.Count; noChange = $noChange
+    unverified = $unresolved.Count; noComparableProperties = $noComparable; noChange = $noChange
     incompleteReasons = @($incompleteReasons); elapsedSeconds = $elapsed; metrics = $metrics
 }
 $summary | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath $paths.Summary -Encoding utf8
@@ -206,6 +235,6 @@ if (-not $KeepIntermediate) {
 
 [pscustomobject]@{
     Status = $status; ReportPath = $paths.Report; SummaryPath = $paths.Summary
-    Create = $create.Count; Modify = $modify.Count; NotInTemplate = $extra.Count; Unverified = $unresolved.Count + $issues.Count; NoChange = $noChange
+    Create = $create.Count; Modify = $modify.Count; NotInTemplate = $extra.Count; Unverified = $unresolved.Count; NoComparableProperties = $noComparable; NoChange = $noChange
 }
 if ($status -eq 'INCOMPLETE') { exit 2 }

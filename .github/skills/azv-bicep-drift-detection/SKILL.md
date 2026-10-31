@@ -21,7 +21,7 @@ Compare Bicep templates in a solution folder against either their source Draw.io
 - `.github/skills/shared/azure-resource-configs.md` — Per-resource-type configuration schemas with defaults
 - `.github/skills/shared/azure-deployment-verification.md` — Pre-deployment verification rules
 - `.github/skills/shared/bicep-best-practices.md` — Bicep authoring rules (MUST read before generating any resource block)
-- `.github/skills/shared/data/azure-property-paths.json` — Tracked properties, ARM JSON paths, defaults, severity classifications
+- `.github/skills/shared/data/azure-property-paths.json` — Tracked properties, ARM JSON paths, normalization and severity classifications
 
 **Shared procedures** (MUST follow):
 - `.github/skills/shared/procedures/azure-authentication.md` — Azure session check (Azure mode only)
@@ -87,6 +87,7 @@ pwsh .github/skills/azv-bicep-drift-detection/scripts/Invoke-BicepDriftDetection
 
 It checks auth, parses Bicep (ARM JSON parameter files, pipeline overrides, `uniqueString()`/`guid()` resolved offline, secrets masked), reads Azure once (detail reads only for expected resources), compares tracked properties, and writes `.azverify-tmp/drift-report.md` plus `drift-summary.json`.
 
+- This path uses **Azure CLI only** for authentication, scope lookup, inventory and token acquisition. `-Backend Auto` selects AzureCLI; `AzPowerShell` is rejected before the auth probe. Sign in with `az login`; an Az PowerShell session alone is not sufficient.
 - Ask the user for `-SubscriptionId` and `-ResourceGroup` explicitly; never infer them from folder names.
 - Exit `0` = COMPLETE, `2` = INCOMPLETE (some values/reads unavailable - report is still produced and clearly marked; never present it as complete), `1` = failed (auth, scope or compile: stop and show the message).
 - Present the generated report in step 8 as is. Azure-only resources are labeled "Not in template", not guaranteed deletes.
@@ -96,7 +97,7 @@ It checks auth, parses Bicep (ARM JSON parameter files, pipeline overrides, `uni
 
 **Diagram mode is fully offline — skip this step.**
 
-In Azure mode, run `pwsh .github/skills/shared/scripts/Test-AzureAuth.ps1` — see `.github/skills/shared/procedures/azure-authentication.md` for the script contract. A **non-zero exit code is a HARD GATE**: present the authentication instructions from the contract doc and stop. *(If pwsh or the script is unavailable, see "Fallback: pwsh Unavailable".)*
+In Azure mode, run `pwsh .github/skills/shared/scripts/Test-AzureAuth.ps1 -Backend AzureCLI -SubscriptionId <sub-id>` — the manual Azure path uses the same backend as the fast path. A **non-zero exit code is a HARD GATE**: present the Azure CLI authentication instructions and stop. *(If pwsh or the script is unavailable, see "Fallback: pwsh Unavailable".)*
 
 ### 3. Accept Bicep Inputs
 
@@ -155,7 +156,7 @@ pwsh .github/skills/shared/scripts/ConvertFrom-BicepTemplate.ps1 -BicepFile <sel
 pwsh .github/skills/shared/scripts/ConvertFrom-BicepTemplate.ps1 -BicepFile <selected-bicep-file> -Depth standard -OutFile <work-dir>/bicep-model-raw.json
 ```
 
-The emitted model is the **expected** state: resource types, parameter-resolved names, tracked property values, and relationships across `main.bicep` and its modules. Where a tracked property resolves to a parameter with no value in the parameter file, fall back to the default in `azure-property-paths.json`.
+The emitted model is the **expected** state: resource types, parameter-resolved names, ARM-shaped properties (including top-level SKU), and relationships across `main.bicep` and its modules. In Azure mode add `-SubscriptionId <sub-id> -ResourceGroup <rg-name> -Location <deployment-region> -ResolveDeterministicNames -MaskSecrets` to either parser command, just as the fast path does. Subscription-scope templates use their explicit deployment location and any required resource-group parameter. Never replace unresolved values or missing parameters with configuration defaults.
 
 If the script exits non-zero or produces output that is not valid JSON, use the fallback method in the contract.
 
@@ -238,18 +239,18 @@ Run the shared discovery script, enriched and filtered in one call — see `.git
 
 ```powershell
 # Resource group scope
-pwsh .github/skills/shared/scripts/Get-AzureResourceModel.ps1 -ResourceGroup <rg-name> -Enrich -Mode bicep -OutFile <work-dir>/azure-model.json
+pwsh .github/skills/shared/scripts/Get-AzureResourceModel.ps1 -ResourceGroup <rg-name> -SubscriptionId <sub-id> -ExpectedModel <work-dir>/bicep-model.json -Mode bicep -ManagementEndpoint <active-cloud-resource-manager-endpoint> -OutFile <work-dir>/azure-model.json
 
 # Subscription scope
-pwsh .github/skills/shared/scripts/Get-AzureResourceModel.ps1 -SubscriptionId <sub-id> -Enrich -Mode bicep -OutFile <work-dir>/azure-model.json
+pwsh .github/skills/shared/scripts/Get-AzureResourceModel.ps1 -SubscriptionId <sub-id> -ExpectedModel <work-dir>/bicep-model.json -Mode bicep -ManagementEndpoint <active-cloud-resource-manager-endpoint> -OutFile <work-dir>/azure-model.json
 ```
 
 Notes:
-- `-Enrich` populates each resource's `properties` bag with the tracked properties from `azure-property-paths.json`, which the property comparison in Step 7 requires.
+- `-ExpectedModel` uses the same expected-aware discovery as the fast path: one inventory call followed by targeted ARM reads, with canonical `comparisonProperties`. Get the active cloud endpoint with `az cloud show --query endpoints.resourceManager -o json`; use the explicitly selected subscription for every CLI call.
 - Do **not** pass `-StripReadOnly` — drift comparison needs the full property bag.
 - `-Mode bicep` applies the shared exclusion rules in `.github/skills/shared/data/resource-filter-rules.json` (network watchers, smart detector alert rules, portal dashboards, deployment history, template specs, `Microsoft.Authorization/*`, and resources tagged only with `hidden-*` keys). Do not maintain a separate inline exclusion list. Resources that Azure creates implicitly alongside a declared resource — such as a VM's OS disk — are **not** filtered; Step 8 annotates them.
 - Report a single summary line after enrichment (e.g. "Discovered 18 resources, enriched 18"), not one line per resource.
-- The script stops (non-zero exit) if any resource's details cannot be retrieved. If the script exits non-zero or emits unparseable output, use the inline fallback in the discovery contract; in the fallback, record each tracked property that cannot be retrieved as the literal string `unknown` and continue with the remaining resources.
+- An inventory/authentication failure stops the script. An unavailable detail read is recorded in `issues`, with unknown property values and existence `Unknown` unless inventory already confirmed it. Only a confirmed resource-not-found response means `Absent`.
 - If the result count is zero and the resource group was confirmed to exist, warn that the authenticated identity may lack Reader permissions, or that nothing has been deployed yet.
 
 ### 7. Compare Models and Classify Drift
@@ -261,13 +262,10 @@ Run the comparison script — see `.github/skills/shared/procedures/resource-mat
 pwsh .github/skills/shared/scripts/Compare-ResourceModels.ps1 -ModelA <work-dir>/bicep-model.json -ModelB <work-dir>/diagram-model.json -LabelA Bicep -LabelB Diagram -OutFile <work-dir>/match-report.json
 
 # Azure mode (existence + property-level)
-pwsh .github/skills/shared/scripts/Compare-ResourceModels.ps1 -ModelA <work-dir>/bicep-model.json -ModelB <work-dir>/azure-model.json -LabelA Bicep -LabelB Azure -CompareProperties -OutFile <work-dir>/match-report.json
+pwsh .github/skills/shared/scripts/Compare-ResourceModels.ps1 -ModelA <work-dir>/bicep-model.json -ModelB <work-dir>/azure-model.json -LabelA Bicep -LabelB Azure -AzureIdentity -TrackedProperties -OutFile <work-dir>/match-report.json
 ```
 
-Use the emitted match report as the authoritative **matching** result. The script compares property values literally, so in Azure mode post-process each `propertyComparison.drifts` list (after the Step 4a default fallback) before classifying:
-- A drift whose Azure value (`valueB`) is `unknown` is reported as `⚠️ Unknown` — never counted as matching or drifting.
-- A drift whose template value (`valueA`) is an unresolved ARM expression (a string starting with `[` and ending with `]`) or an `<unresolved: …>` marker is reported as `⚠️ Unresolved` — the expected value cannot be determined offline, so it is never counted as drift.
-- Recompute each resource's drift count after removing these entries.
+Use the emitted match report as the authoritative comparison result. Both Azure paths use exact ARM identity and the same canonical projection, including top-level SKU. Unknown/unresolved values are emitted in `propertyComparison.uncertainties`, not drifts. Heuristic type/name matching is only for diagrams.
 
 **Diagram mode classifications**: **In Sync**, **In Sync (name differs)**, **Bicep Only** (in templates, not in the diagram), **Diagram Only** (in the diagram, not in the templates). Bicep-specific rules: diagram VNet containers match `Microsoft.Network/virtualNetworks`; resources declared with an `if` condition are classified normally but annotated "conditional".
 
@@ -278,12 +276,13 @@ Use the emitted match report as the authoritative **matching** result. The scrip
 | 🆕 **Create** | In the templates but not in Azure — will be created on deployment |
 | ✏️ **Modify** | In both, but one or more tracked properties differ |
 | 🗑️ **Delete** | In Azure but not declared in the templates |
-| ⚠️ **Name Mismatch** | Matched by type but not by name — a deployment would create the template-named resource instead of modifying the Azure one |
-| ✅ **No Change** | In both, with all tracked properties matching |
+| ⚠️ **Unverified** | Identity/existence unknown, or at least one expected property unavailable/unresolved |
+| **No Comparable Properties** | Existence confirmed, but no expected configuration can be assessed |
+| ✅ **No Change** | Existence confirmed and all specified tracked properties verified matching |
 
-Map match-report entries as follows: `Bicep Only` → **Create**; `Azure Only` → **Delete**; `In Sync` → **Modify** when at least one drift remains after post-processing, otherwise **No Change**; `In Sync (name differs)` → **Name Mismatch**, regardless of its property results (show them for reference only). Name-differs matches come from the single-of-type and near-name heuristics, so ask the user to confirm each pair is the same logical resource; a template resource whose name is an unresolved expression can only match this way — annotate it "template name unresolved".
+Map entries exactly as the fast path: `Bicep Only` → **Create**; `Azure Only` → **Not in template** (not a guaranteed delete); `Unresolved`/`Unverified` → **Unverified**. For identity-matched resources, `Incomplete` → **Unverified**, `No Comparable Properties` → its own category, `Properties Drifted` → **Modify**, and only `All Properties Match` → **No Change**. Count each resource once; show any confirmed drifts within an incomplete resource's Unverified details. No-comparable and unverified resources make the overall configuration report INCOMPLETE.
 
-Azure mode is always property-aware — the `propertyComparison` object per matched resource distinguishes **Modify** from **No Change**, using the expected value from the templates (or the `azure-property-paths.json` default where the templates leave it unset) and the normalization rules documented in `resource-matching.md`. A matched resource with no comparable tracked properties (including after removing Unknown and Unresolved entries) is reported as `No Comparable Properties`, not as No Change.
+Azure mode assesses only explicit, resolved tracked expectations; missing configuration is not inferred from defaults. Normalization follows property metadata: exact strings by default, selected case-insensitive enums, and region-only whitespace normalization. “In Sync” denotes identity matching, not a verified configuration result.
 
 ### 8. Present the Drift Report
 
@@ -307,11 +306,12 @@ Azure mode is always property-aware — the `propertyComparison` object per matc
 | my-subnet | Subnet | ✅ In Sync (name differs) | Diagram: "default", Bicep: "snet-default" |
 ```
 
-**Azure mode**: header with the target scope and the template/parameter paths, then a summary table with counts per category (🆕 Create, ✏️ Modify, 🗑️ Delete, ⚠️ Name Mismatch, ✅ No Change), then per-category sections:
+**Azure mode**: header with the target scope and the template/parameter paths, then a summary table with mutually exclusive counts (Create, Modify, Not in template, Unverified, No Comparable Properties, No Change), then per-category sections:
 - **🆕 Create** — table of template resources missing from Azure (columns: #, Resource, Type, Resource Group)
 - **✏️ Modify** — one property diff table per resource (columns: Property, Current Azure Value, Template Value, Severity, Source)
 - **🗑️ Delete** — table of Azure resources absent from the templates. Annotate resources that Azure likely created implicitly for another resource in scope (e.g. an OS disk named after a VM) as "likely auto-created". Warn that a Complete-mode deployment would remove these resources **and** every resource type excluded from this report by the filter rules
-- **⚠️ Name Mismatch** — table of paired resources (columns: #, Template Name, Azure Name, Type, Notes)
+- **⚠️ Unverified** — resources whose identity, existence or configuration was not verified, with causes and any confirmed drifts
+- **No Comparable Properties** — existence-only resources; configuration was not assessed
 - **✅ No Change** — collapsible `<details>` section listing matched resources
 
 > **CRITICAL**: property diff tables MUST contain **only** properties where expected ≠ actual after normalization. Matching properties belong in the "No Change" section, never mixed into a diff table.

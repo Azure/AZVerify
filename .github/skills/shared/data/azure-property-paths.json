@@ -6,13 +6,21 @@
       "resourceTypePattern": "*",
       "property": "skuName",
       "armJsonPath": "sku.name",
+      "normalization": "caseInsensitive",
       "notes": "Extract from top-level sku object when present"
     },
     {
       "resourceTypePattern": "*",
       "property": "skuTier",
       "armJsonPath": "sku.tier",
+      "normalization": "caseInsensitive",
       "notes": "Extract from top-level sku object when present"
+    },
+    {
+      "resourceTypePattern": "*",
+      "property": "location",
+      "armJsonPath": "location",
+      "normalization": "region"
     }
   ],
   "compositeRules": [
@@ -37,10 +45,12 @@
       "properties": [
         {
           "name": "vmSize",
+          "normalization": "caseInsensitive",
           "armJsonPath": "properties.hardwareProfile.vmSize"
         },
         {
           "name": "osType",
+          "normalization": "caseInsensitive",
           "armJsonPath": "properties.storageProfile.osDisk.osType"
         },
         {
@@ -49,6 +59,7 @@
         },
         {
           "name": "osDiskType",
+          "normalization": "caseInsensitive",
           "armJsonPath": "properties.storageProfile.osDisk.managedDisk.storageAccountType"
         },
         {
@@ -89,6 +100,7 @@
       "properties": [
         {
           "name": "vmSize",
+          "normalization": "caseInsensitive",
           "armJsonPath": "sku.name"
         },
         {
@@ -101,6 +113,7 @@
         },
         {
           "name": "upgradePolicy",
+          "normalization": "caseInsensitive",
           "armJsonPath": "properties.upgradePolicy.mode"
         }
       ]
@@ -121,6 +134,7 @@
         },
         {
           "name": "kind",
+          "normalization": "caseInsensitive",
           "armJsonPath": "kind"
         },
         {
@@ -149,6 +163,7 @@
         },
         {
           "name": "minTlsVersion",
+          "normalization": "caseInsensitive",
           "armJsonPath": "properties.siteConfig.minTlsVersion"
         },
         {
@@ -161,10 +176,12 @@
         },
         {
           "name": "ftpsState",
+          "normalization": "caseInsensitive",
           "armJsonPath": "properties.siteConfig.ftpsState"
         },
         {
           "name": "publicNetworkAccess",
+          "normalization": "caseInsensitive",
           "armJsonPath": "properties.publicNetworkAccess"
         },
         {
@@ -193,6 +210,7 @@
         },
         {
           "name": "minTlsVersion",
+          "normalization": "caseInsensitive",
           "armJsonPath": "properties.siteConfig.minTlsVersion"
         }
       ]
@@ -209,14 +227,17 @@
         },
         {
           "name": "kind",
+          "normalization": "caseInsensitive",
           "armJsonPath": "kind"
         },
         {
           "name": "accessTier",
+          "normalization": "caseInsensitive",
           "armJsonPath": "properties.accessTier"
         },
         {
           "name": "minimumTlsVersion",
+          "normalization": "caseInsensitive",
           "armJsonPath": "properties.minimumTlsVersion"
         },
         {
@@ -229,6 +250,7 @@
         },
         {
           "name": "publicNetworkAccess",
+          "normalization": "caseInsensitive",
           "armJsonPath": "properties.publicNetworkAccess"
         },
         {
@@ -253,6 +275,7 @@
         },
         {
           "name": "publicNetworkAccess",
+          "normalization": "caseInsensitive",
           "armJsonPath": "properties.publicNetworkAccess"
         }
       ]
@@ -281,10 +304,12 @@
         },
         {
           "name": "readScale",
+          "normalization": "caseInsensitive",
           "armJsonPath": "properties.readScale"
         },
         {
           "name": "backupRedundancy",
+          "normalization": "caseInsensitive",
           "armJsonPath": "properties.requestedBackupStorageRedundancy"
         }
       ]
@@ -297,14 +322,17 @@
       "properties": [
         {
           "name": "kind",
+          "normalization": "caseInsensitive",
           "armJsonPath": "kind"
         },
         {
           "name": "consistencyLevel",
+          "normalization": "caseInsensitive",
           "armJsonPath": "properties.consistencyPolicy.defaultConsistencyLevel"
         },
         {
           "name": "capacityMode",
+          "normalization": "caseInsensitive",
           "armJsonPath": "properties.capacityMode"
         },
         {
@@ -317,10 +345,12 @@
         },
         {
           "name": "publicNetworkAccess",
+          "normalization": "caseInsensitive",
           "armJsonPath": "properties.publicNetworkAccess"
         },
         {
           "name": "backupPolicy",
+          "normalization": "caseInsensitive",
           "armJsonPath": "properties.backupPolicy.type"
         }
       ]
@@ -345,10 +375,12 @@
         },
         {
           "name": "minimumTlsVersion",
+          "normalization": "caseInsensitive",
           "armJsonPath": "properties.minimumTlsVersion"
         },
         {
           "name": "publicNetworkAccess",
+          "normalization": "caseInsensitive",
           "armJsonPath": "properties.publicNetworkAccess"
         }
       ]
@@ -389,6 +421,7 @@
         },
         {
           "name": "privateEndpointNetworkPolicies",
+          "normalization": "caseInsensitive",
           "armJsonPath": "properties.privateEndpointNetworkPolicies"
         }
       ]
@@ -429,6 +462,7 @@
         },
         {
           "name": "protocol",
+          "normalization": "caseInsensitive",
           "armJsonPath": "properties.loadBalancingRules[0].properties.protocol"
         },
         {
@@ -449,6 +483,7 @@
         },
         {
           "name": "tier",
+          "normalization": "caseInsensitive",
           "armJsonPath": "properties.sku.tier"
         },
         {
@@ -477,6 +512,7 @@
         },
         {
           "name": "allocationMethod",
+          "normalization": "caseInsensitive",
           "armJsonPath": "properties.publicIPAllocationMethod"
         },
         {
@@ -501,6 +537,7 @@
         },
         {
           "name": "privateIPAllocationMethod",
+          "normalization": "caseInsensitive",
           "armJsonPath": "properties.ipConfigurations[0].properties.privateIPAllocationMethod"
         }
       ]
@@ -533,10 +570,12 @@
         },
         {
           "name": "gatewayType",
+          "normalization": "caseInsensitive",
           "armJsonPath": "properties.gatewayType"
         },
         {
           "name": "vpnType",
+          "normalization": "caseInsensitive",
           "armJsonPath": "properties.vpnType"
         },
         {
@@ -557,6 +596,7 @@
         },
         {
           "name": "threatIntelMode",
+          "normalization": "caseInsensitive",
           "armJsonPath": "properties.threatIntelMode"
         }
       ]
@@ -597,6 +637,7 @@
         },
         {
           "name": "publicNetworkAccess",
+          "normalization": "caseInsensitive",
           "armJsonPath": "properties.publicNetworkAccess"
         },
         {
@@ -617,6 +658,7 @@
         },
         {
           "name": "defaultNodePoolVmSize",
+          "normalization": "caseInsensitive",
           "armJsonPath": "properties.agentPoolProfiles[0].vmSize"
         },
         {
@@ -625,10 +667,12 @@
         },
         {
           "name": "networkPlugin",
+          "normalization": "caseInsensitive",
           "armJsonPath": "properties.networkProfile.networkPlugin"
         },
         {
           "name": "networkPolicy",
+          "normalization": "caseInsensitive",
           "armJsonPath": "properties.networkProfile.networkPolicy"
         },
         {
@@ -649,6 +693,7 @@
       "properties": [
         {
           "name": "workloadProfileType",
+          "normalization": "caseInsensitive",
           "armJsonPath": "properties.workloadProfiles[0].workloadProfileType"
         },
         {
@@ -709,6 +754,7 @@
         },
         {
           "name": "publicNetworkAccess",
+          "normalization": "caseInsensitive",
           "armJsonPath": "properties.publicNetworkAccess"
         }
       ]
@@ -721,6 +767,7 @@
       "properties": [
         {
           "name": "applicationType",
+          "normalization": "caseInsensitive",
           "armJsonPath": "properties.Application_Type"
         },
         {
@@ -729,6 +776,7 @@
         },
         {
           "name": "ingestionMode",
+          "normalization": "caseInsensitive",
           "armJsonPath": "properties.IngestionMode"
         }
       ]
