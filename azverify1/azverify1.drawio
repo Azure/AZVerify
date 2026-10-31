@@ -1,0 +1,19 @@
+<mxfile>
+  <diagram name="Architecture Overview" id="overview">
+    <mxGraphModel dx="0" dy="0" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1000" pageHeight="600" math="0" shadow="0">
+      <root>
+        <mxCell id="0"/>
+        <mxCell id="1" parent="0"/>
+        <mxCell id="rg" value="AzVerify1" style="container=1;collapsible=0;pointerEvents=0;rounded=1;whiteSpace=wrap;html=1;verticalAlign=top;fontStyle=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=14;" vertex="1" parent="1">
+          <mxGeometry x="30" y="30" width="650" height="420" as="geometry"/>
+        </mxCell>
+        <mxCell id="rg-icon" style="aspect=fixed;html=1;points=[];align=center;image;resizable=0;image=img/lib/azure2/general/Resource_Groups.svg;" vertex="1" parent="rg">
+          <mxGeometry x="10" y="10" width="30" height="30" as="geometry"/>
+        </mxCell>
+        <mxCell id="storage" value="azvtest9bd9cf0b" style="aspect=fixed;html=1;points=[];align=center;image;resizable=0;image=img/lib/azure2/storage/Storage_Accounts.svg;verticalLabelPosition=bottom;verticalAlign=top;" vertex="1" parent="rg">
+          <mxGeometry x="290" y="170" width="50" height="50" as="geometry"/>
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>
