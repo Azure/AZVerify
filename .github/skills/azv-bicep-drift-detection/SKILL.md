@@ -75,6 +75,23 @@ Decide what the Bicep templates are being validated against, before anything els
 
 Announce the selected mode before continuing.
 
+### Azure Mode Fast Path (default)
+
+For a **resource-group scope**, replace steps 2, 4, 6 and 7 with ONE read-only script call (one approval, no MCP needed, no Azure changes):
+
+```powershell
+pwsh .github/skills/azv-bicep-drift-detection/scripts/Invoke-BicepDriftDetection.ps1 `
+  -BicepFile <main.bicep> [-ParamFile <.bicepparam|.json>] [-ParameterOverride @{ name = 'value' }] `
+  -ResourceGroup <rg> -SubscriptionId <id>
+```
+
+It checks auth, parses Bicep (ARM JSON parameter files, pipeline overrides, `uniqueString()`/`guid()` resolved offline, secrets masked), reads Azure once (detail reads only for expected resources), compares tracked properties, and writes `.azverify-tmp/drift-report.md` plus `drift-summary.json`.
+
+- Ask the user for `-SubscriptionId` and `-ResourceGroup` explicitly; never infer them from folder names.
+- Exit `0` = COMPLETE, `2` = INCOMPLETE (some values/reads unavailable - report is still produced and clearly marked; never present it as complete), `1` = failed (auth, scope or compile: stop and show the message).
+- Present the generated report in step 8 as is. Azure-only resources are labeled "Not in template", not guaranteed deletes.
+- Use the manual steps below only for subscription scope, diagram mode, or when Fast Path doesn't work.
+
 ### 2. Check Azure Authentication (Azure Mode Only)
 
 **Diagram mode is fully offline — skip this step.**
