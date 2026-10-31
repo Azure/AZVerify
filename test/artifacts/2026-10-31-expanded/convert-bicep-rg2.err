@@ -1,0 +1,6 @@
+[AzVerify] Running 'bicep build' with az.
+[AzVerify] Running 'bicep build-params' with az.
+[AzVerify] Skipping 'monitoring': condition evaluates to false.
+[AzVerify] Running 'bicep build-params' with az.
+[AzVerify] Skipping 'monitoring': condition evaluates to false.
+[AzVerify] Resolved all 13 resource name(s).

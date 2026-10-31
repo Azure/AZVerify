@@ -1,0 +1,7 @@
+[AzVerify] Using Azure CLI ('/usr/bin/az') for live discovery.
+[AzVerify] Running az resource list.
+[AzVerify] Discovered 12 resource(s).
+[AzVerify] Excluding resource 'azvft1-logs' due to rule 'Microsoft.OperationalInsights/workspaces'.
+[AzVerify] Excluding resource 'azvft1-insights' due to rule 'Microsoft.Insights/components'.
+[AzVerify] Excluding resource 'azvft1-actions' due to rule 'Microsoft.Insights/actionGroups'.
+[AzVerify] Filtered 3 resource(s); returning 9 resource(s).

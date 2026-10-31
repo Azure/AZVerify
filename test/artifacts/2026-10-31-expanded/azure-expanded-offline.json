@@ -1,0 +1,343 @@
+{
+  "resources": [
+    {
+      "id": "/subscriptions/9bd9cf0b-dfc1-4fd3-833c-9fdf4d49d9d2/resourceGroups/AzVerify1/providers/Microsoft.OperationalInsights/workspaces/azvft1-logs",
+      "type": "Microsoft.OperationalInsights/workspaces",
+      "name": "azvft1-logs",
+      "resourceGroup": "AzVerify1",
+      "location": "swedencentral",
+      "properties": {},
+      "deployableProperties": {},
+      "tags": {
+        "azverifyFunctionalTest": "expanded-v1"
+      },
+      "sku": {},
+      "kind": "",
+      "identity": {},
+      "relationships": []
+    },
+    {
+      "id": "/subscriptions/9bd9cf0b-dfc1-4fd3-833c-9fdf4d49d9d2/resourceGroups/AzVerify1/providers/Microsoft.KeyVault/vaults/azvft1-kv-9bd9cf0b",
+      "type": "Microsoft.KeyVault/vaults",
+      "name": "azvft1-kv-9bd9cf0b",
+      "resourceGroup": "AzVerify1",
+      "location": "swedencentral",
+      "properties": {},
+      "deployableProperties": {},
+      "tags": {
+        "azverifyFunctionalTest": "expanded-v1"
+      },
+      "sku": {},
+      "kind": "",
+      "identity": {},
+      "relationships": []
+    },
+    {
+      "id": "/subscriptions/9bd9cf0b-dfc1-4fd3-833c-9fdf4d49d9d2/resourceGroups/AzVerify1/providers/Microsoft.ManagedIdentity/userAssignedIdentities/azvft1-identity",
+      "type": "Microsoft.ManagedIdentity/userAssignedIdentities",
+      "name": "azvft1-identity",
+      "resourceGroup": "AzVerify1",
+      "location": "swedencentral",
+      "properties": {},
+      "deployableProperties": {},
+      "tags": {
+        "azverifyFunctionalTest": "expanded-v1"
+      },
+      "sku": {},
+      "kind": "",
+      "identity": {},
+      "relationships": []
+    },
+    {
+      "id": "/subscriptions/9bd9cf0b-dfc1-4fd3-833c-9fdf4d49d9d2/resourceGroups/AzVerify1/providers/Microsoft.Network/networkSecurityGroups/azvft1-nsg",
+      "type": "Microsoft.Network/networkSecurityGroups",
+      "name": "azvft1-nsg",
+      "resourceGroup": "AzVerify1",
+      "location": "swedencentral",
+      "properties": {},
+      "deployableProperties": {},
+      "tags": {
+        "azverifyFunctionalTest": "expanded-v1"
+      },
+      "sku": {},
+      "kind": "",
+      "identity": {},
+      "relationships": []
+    },
+    {
+      "id": "/subscriptions/9bd9cf0b-dfc1-4fd3-833c-9fdf4d49d9d2/resourceGroups/AzVerify1/providers/Microsoft.Network/virtualNetworks/azvft1-vnet",
+      "type": "Microsoft.Network/virtualNetworks",
+      "name": "azvft1-vnet",
+      "resourceGroup": "AzVerify1",
+      "location": "swedencentral",
+      "properties": {},
+      "deployableProperties": {},
+      "tags": {
+        "azverifyFunctionalTest": "expanded-v1"
+      },
+      "sku": {},
+      "kind": "",
+      "identity": {},
+      "relationships": []
+    },
+    {
+      "id": "/subscriptions/9bd9cf0b-dfc1-4fd3-833c-9fdf4d49d9d2/resourceGroups/AzVerify1/providers/Microsoft.Network/routeTables/azvft1-routes",
+      "type": "Microsoft.Network/routeTables",
+      "name": "azvft1-routes",
+      "resourceGroup": "AzVerify1",
+      "location": "swedencentral",
+      "properties": {},
+      "deployableProperties": {},
+      "tags": {
+        "azverifyFunctionalTest": "expanded-v1"
+      },
+      "sku": {},
+      "kind": "",
+      "identity": {},
+      "relationships": []
+    },
+    {
+      "id": "/subscriptions/9bd9cf0b-dfc1-4fd3-833c-9fdf4d49d9d2/resourceGroups/AzVerify1/providers/Microsoft.Storage/storageAccounts/azvft19bd9cf0b",
+      "type": "Microsoft.Storage/storageAccounts",
+      "name": "azvft19bd9cf0b",
+      "resourceGroup": "AzVerify1",
+      "location": "swedencentral",
+      "properties": {},
+      "deployableProperties": {},
+      "tags": {
+        "azverifyFunctionalTest": "expanded-v1"
+      },
+      "sku": {
+        "capacity": {},
+        "tier": "Standard",
+        "model": {},
+        "family": {},
+        "size": {},
+        "name": "Standard_LRS"
+      },
+      "kind": "StorageV2",
+      "identity": {
+        "tenantId": {},
+        "userAssignedIdentities": {
+          "/subscriptions/9bd9cf0b-dfc1-4fd3-833c-9fdf4d49d9d2/resourceGroups/AzVerify1/providers/Microsoft.ManagedIdentity/userAssignedIdentities/azvft1-identity": {
+            "principalId": {},
+            "clientId": {}
+          }
+        },
+        "principalId": {},
+        "type": "UserAssigned"
+      },
+      "relationships": []
+    },
+    {
+      "id": "/subscriptions/9bd9cf0b-dfc1-4fd3-833c-9fdf4d49d9d2/resourceGroups/AzVerify1/providers/Microsoft.Network/networkInterfaces/azvft1-nic-0",
+      "type": "Microsoft.Network/networkInterfaces",
+      "name": "azvft1-nic-0",
+      "resourceGroup": "AzVerify1",
+      "location": "swedencentral",
+      "properties": {},
+      "deployableProperties": {},
+      "tags": {
+        "azverifyFunctionalTest": "expanded-v1"
+      },
+      "sku": {},
+      "kind": "Regular",
+      "identity": {},
+      "relationships": []
+    },
+    {
+      "id": "/subscriptions/9bd9cf0b-dfc1-4fd3-833c-9fdf4d49d9d2/resourceGroups/AzVerify1/providers/Microsoft.Network/networkInterfaces/azvft1-nic-1",
+      "type": "Microsoft.Network/networkInterfaces",
+      "name": "azvft1-nic-1",
+      "resourceGroup": "AzVerify1",
+      "location": "swedencentral",
+      "properties": {},
+      "deployableProperties": {},
+      "tags": {
+        "azverifyFunctionalTest": "expanded-v1"
+      },
+      "sku": {},
+      "kind": "Regular",
+      "identity": {},
+      "relationships": []
+    },
+    {
+      "id": "/subscriptions/9bd9cf0b-dfc1-4fd3-833c-9fdf4d49d9d2/resourceGroups/AzVerify1/providers/Microsoft.Insights/components/azvft1-insights",
+      "type": "Microsoft.Insights/components",
+      "name": "azvft1-insights",
+      "resourceGroup": "AzVerify1",
+      "location": "swedencentral",
+      "properties": {},
+      "deployableProperties": {},
+      "tags": {
+        "azverifyFunctionalTest": "expanded-v1"
+      },
+      "sku": {},
+      "kind": "web",
+      "identity": {},
+      "relationships": []
+    },
+    {
+      "id": "/subscriptions/9bd9cf0b-dfc1-4fd3-833c-9fdf4d49d9d2/resourceGroups/AzVerify1/providers/Microsoft.Insights/actiongroups/azvft1-actions",
+      "type": "Microsoft.Insights/actiongroups",
+      "name": "azvft1-actions",
+      "resourceGroup": "AzVerify1",
+      "location": "global",
+      "properties": {},
+      "deployableProperties": {},
+      "tags": {
+        "azverifyFunctionalTest": "expanded-v1"
+      },
+      "sku": {},
+      "kind": "",
+      "identity": {},
+      "relationships": []
+    },
+    {
+      "id": "/subscriptions/9bd9cf0b-dfc1-4fd3-833c-9fdf4d49d9d2/resourceGroups/AzVerify2/providers/Microsoft.ManagedIdentity/userAssignedIdentities/azvft2-identity",
+      "type": "Microsoft.ManagedIdentity/userAssignedIdentities",
+      "name": "azvft2-identity",
+      "resourceGroup": "AzVerify2",
+      "location": "swedencentral",
+      "properties": {},
+      "deployableProperties": {},
+      "tags": {
+        "azverifyFunctionalTest": "expanded-v1"
+      },
+      "sku": {},
+      "kind": "",
+      "identity": {},
+      "relationships": []
+    },
+    {
+      "id": "/subscriptions/9bd9cf0b-dfc1-4fd3-833c-9fdf4d49d9d2/resourceGroups/AzVerify2/providers/Microsoft.KeyVault/vaults/azvft2-kv-9bd9cf0b",
+      "type": "Microsoft.KeyVault/vaults",
+      "name": "azvft2-kv-9bd9cf0b",
+      "resourceGroup": "AzVerify2",
+      "location": "swedencentral",
+      "properties": {},
+      "deployableProperties": {},
+      "tags": {
+        "azverifyFunctionalTest": "expanded-v1"
+      },
+      "sku": {},
+      "kind": "",
+      "identity": {},
+      "relationships": []
+    },
+    {
+      "id": "/subscriptions/9bd9cf0b-dfc1-4fd3-833c-9fdf4d49d9d2/resourceGroups/AzVerify2/providers/Microsoft.Network/routeTables/azvft2-routes",
+      "type": "Microsoft.Network/routeTables",
+      "name": "azvft2-routes",
+      "resourceGroup": "AzVerify2",
+      "location": "swedencentral",
+      "properties": {},
+      "deployableProperties": {},
+      "tags": {
+        "azverifyFunctionalTest": "expanded-v1"
+      },
+      "sku": {},
+      "kind": "",
+      "identity": {},
+      "relationships": []
+    },
+    {
+      "id": "/subscriptions/9bd9cf0b-dfc1-4fd3-833c-9fdf4d49d9d2/resourceGroups/AzVerify2/providers/Microsoft.Network/virtualNetworks/azvft2-vnet",
+      "type": "Microsoft.Network/virtualNetworks",
+      "name": "azvft2-vnet",
+      "resourceGroup": "AzVerify2",
+      "location": "swedencentral",
+      "properties": {},
+      "deployableProperties": {},
+      "tags": {
+        "azverifyFunctionalTest": "expanded-v1"
+      },
+      "sku": {},
+      "kind": "",
+      "identity": {},
+      "relationships": []
+    },
+    {
+      "id": "/subscriptions/9bd9cf0b-dfc1-4fd3-833c-9fdf4d49d9d2/resourceGroups/AzVerify2/providers/Microsoft.Network/networkSecurityGroups/azvft2-nsg",
+      "type": "Microsoft.Network/networkSecurityGroups",
+      "name": "azvft2-nsg",
+      "resourceGroup": "AzVerify2",
+      "location": "swedencentral",
+      "properties": {},
+      "deployableProperties": {},
+      "tags": {
+        "azverifyFunctionalTest": "expanded-v1"
+      },
+      "sku": {},
+      "kind": "",
+      "identity": {},
+      "relationships": []
+    },
+    {
+      "id": "/subscriptions/9bd9cf0b-dfc1-4fd3-833c-9fdf4d49d9d2/resourceGroups/AzVerify2/providers/Microsoft.Storage/storageAccounts/azvft29bd9cf0b",
+      "type": "Microsoft.Storage/storageAccounts",
+      "name": "azvft29bd9cf0b",
+      "resourceGroup": "AzVerify2",
+      "location": "swedencentral",
+      "properties": {},
+      "deployableProperties": {},
+      "tags": {
+        "azverifyFunctionalTest": "expanded-v1"
+      },
+      "sku": {
+        "capacity": {},
+        "tier": "Standard",
+        "model": {},
+        "family": {},
+        "size": {},
+        "name": "Standard_LRS"
+      },
+      "kind": "StorageV2",
+      "identity": {
+        "tenantId": {},
+        "userAssignedIdentities": {
+          "/subscriptions/9bd9cf0b-dfc1-4fd3-833c-9fdf4d49d9d2/resourceGroups/AzVerify2/providers/Microsoft.ManagedIdentity/userAssignedIdentities/azvft2-identity": {
+            "tenantId": "b9feaee7-c137-48f2-9423-2531591c48b4",
+            "clientId": "e4209766-c838-4868-af06-518a3b180690",
+            "principalId": "664ec28e-9458-4cc4-a7aa-c7be0b150e49"
+          }
+        },
+        "principalId": {},
+        "type": "UserAssigned"
+      },
+      "relationships": []
+    },
+    {
+      "id": "/subscriptions/9bd9cf0b-dfc1-4fd3-833c-9fdf4d49d9d2/resourceGroups/AzVerify2/providers/Microsoft.Network/networkInterfaces/azvft2-nic-0",
+      "type": "Microsoft.Network/networkInterfaces",
+      "name": "azvft2-nic-0",
+      "resourceGroup": "AzVerify2",
+      "location": "swedencentral",
+      "properties": {},
+      "deployableProperties": {},
+      "tags": {
+        "azverifyFunctionalTest": "expanded-v1"
+      },
+      "sku": {},
+      "kind": "Regular",
+      "identity": {},
+      "relationships": []
+    },
+    {
+      "id": "/subscriptions/9bd9cf0b-dfc1-4fd3-833c-9fdf4d49d9d2/resourceGroups/AzVerify2/providers/Microsoft.Network/networkInterfaces/azvft2-nic-1",
+      "type": "Microsoft.Network/networkInterfaces",
+      "name": "azvft2-nic-1",
+      "resourceGroup": "AzVerify2",
+      "location": "swedencentral",
+      "properties": {},
+      "deployableProperties": {},
+      "tags": {
+        "azverifyFunctionalTest": "expanded-v1"
+      },
+      "sku": {},
+      "kind": "Regular",
+      "identity": {},
+      "relationships": []
+    }
+  ]
+}

@@ -1,0 +1,4 @@
+[AzVerify] Using Azure CLI ('/usr/bin/az') for live discovery.
+[AzVerify] Running az resource list.
+[AzVerify] Discovered 12 resource(s).
+[AzVerify] Filtered 0 resource(s); returning 12 resource(s).

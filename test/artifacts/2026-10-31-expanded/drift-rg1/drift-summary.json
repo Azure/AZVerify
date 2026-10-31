@@ -1,0 +1,20 @@
+{
+  "status": "COMPLETE",
+  "subscriptionId": "9bd9cf0b-dfc1-4fd3-833c-9fdf4d49d9d2",
+  "resourceGroup": "AzVerify1",
+  "create": 0,
+  "modify": 1,
+  "notInTemplate": 1,
+  "unverified": 0,
+  "noChange": 13,
+  "incompleteReasons": [],
+  "elapsedSeconds": 15.8,
+  "metrics": {
+    "throttleLimit": 4,
+    "inventoryRequests": 1,
+    "elapsedMilliseconds": 7227,
+    "armRequests": 12,
+    "retries": 0,
+    "detailChecks": 11
+  }
+}

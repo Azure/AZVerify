@@ -1,0 +1,433 @@
+[
+  {
+    "changedTime": "2026-10-31T09:00:26.062429+00:00",
+    "createdTime": "2026-10-31T08:57:15.449668+00:00",
+    "extendedLocation": null,
+    "id": "/subscriptions/9bd9cf0b-dfc1-4fd3-833c-9fdf4d49d9d2/resourceGroups/AzVerify1/providers/Microsoft.OperationalInsights/workspaces/azvft1-logs",
+    "identity": null,
+    "kind": null,
+    "location": "swedencentral",
+    "managedBy": null,
+    "name": "azvft1-logs",
+    "plan": null,
+    "properties": null,
+    "provisioningState": "Succeeded",
+    "resourceGroup": "AzVerify1",
+    "sku": null,
+    "tags": {
+      "azverifyFunctionalTest": "expanded-v1"
+    },
+    "type": "Microsoft.OperationalInsights/workspaces"
+  },
+  {
+    "changedTime": "2026-10-31T08:57:17.321199+00:00",
+    "createdTime": "2026-10-31T08:57:15.461981+00:00",
+    "extendedLocation": null,
+    "id": "/subscriptions/9bd9cf0b-dfc1-4fd3-833c-9fdf4d49d9d2/resourceGroups/AzVerify1/providers/Microsoft.KeyVault/vaults/azvft1-kv-9bd9cf0b",
+    "identity": null,
+    "kind": null,
+    "location": "swedencentral",
+    "managedBy": null,
+    "name": "azvft1-kv-9bd9cf0b",
+    "plan": null,
+    "properties": null,
+    "provisioningState": "Succeeded",
+    "resourceGroup": "AzVerify1",
+    "sku": null,
+    "systemData": {
+      "createdAt": "2026-10-31T08:57:15.509Z",
+      "createdBy": "ca4f17fd-ff1c-4c81-b024-056f773f9809",
+      "createdByType": "Application",
+      "lastModifiedAt": "2026-10-31T08:57:15.509Z",
+      "lastModifiedBy": "ca4f17fd-ff1c-4c81-b024-056f773f9809",
+      "lastModifiedByType": "Application"
+    },
+    "tags": {
+      "azverifyFunctionalTest": "expanded-v1"
+    },
+    "type": "Microsoft.KeyVault/vaults"
+  },
+  {
+    "changedTime": "2026-10-31T08:57:16.880659+00:00",
+    "createdTime": "2026-10-31T08:57:15.582801+00:00",
+    "extendedLocation": null,
+    "id": "/subscriptions/9bd9cf0b-dfc1-4fd3-833c-9fdf4d49d9d2/resourceGroups/AzVerify1/providers/Microsoft.ManagedIdentity/userAssignedIdentities/azvft1-identity",
+    "identity": null,
+    "kind": null,
+    "location": "swedencentral",
+    "managedBy": null,
+    "name": "azvft1-identity",
+    "plan": null,
+    "properties": null,
+    "provisioningState": "Succeeded",
+    "resourceGroup": "AzVerify1",
+    "sku": null,
+    "tags": {
+      "azverifyFunctionalTest": "expanded-v1"
+    },
+    "type": "Microsoft.ManagedIdentity/userAssignedIdentities"
+  },
+  {
+    "changedTime": "2026-10-31T08:57:19.078770+00:00",
+    "createdTime": "2026-10-31T08:57:17.147814+00:00",
+    "extendedLocation": null,
+    "id": "/subscriptions/9bd9cf0b-dfc1-4fd3-833c-9fdf4d49d9d2/resourceGroups/AzVerify1/providers/Microsoft.Network/networkSecurityGroups/azvft1-nsg",
+    "identity": null,
+    "kind": null,
+    "location": "swedencentral",
+    "managedBy": null,
+    "name": "azvft1-nsg",
+    "plan": null,
+    "properties": null,
+    "provisioningState": "Succeeded",
+    "resourceGroup": "AzVerify1",
+    "sku": null,
+    "tags": {
+      "azverifyFunctionalTest": "expanded-v1"
+    },
+    "type": "Microsoft.Network/networkSecurityGroups"
+  },
+  {
+    "changedTime": "2026-10-31T08:57:26.441592+00:00",
+    "createdTime": "2026-10-31T08:57:17.362767+00:00",
+    "extendedLocation": null,
+    "id": "/subscriptions/9bd9cf0b-dfc1-4fd3-833c-9fdf4d49d9d2/resourceGroups/AzVerify1/providers/Microsoft.Network/virtualNetworks/azvft1-vnet",
+    "identity": null,
+    "kind": null,
+    "location": "swedencentral",
+    "managedBy": null,
+    "name": "azvft1-vnet",
+    "plan": null,
+    "properties": null,
+    "provisioningState": "Succeeded",
+    "resourceGroup": "AzVerify1",
+    "sku": null,
+    "tags": {
+      "azverifyFunctionalTest": "expanded-v1"
+    },
+    "type": "Microsoft.Network/virtualNetworks"
+  },
+  {
+    "changedTime": "2026-10-31T08:57:23.492930+00:00",
+    "createdTime": "2026-10-31T08:57:17.623865+00:00",
+    "extendedLocation": null,
+    "id": "/subscriptions/9bd9cf0b-dfc1-4fd3-833c-9fdf4d49d9d2/resourceGroups/AzVerify1/providers/Microsoft.Network/routeTables/azvft1-routes",
+    "identity": null,
+    "kind": null,
+    "location": "swedencentral",
+    "managedBy": null,
+    "name": "azvft1-routes",
+    "plan": null,
+    "properties": null,
+    "provisioningState": "Succeeded",
+    "resourceGroup": "AzVerify1",
+    "sku": null,
+    "tags": {
+      "azverifyFunctionalTest": "expanded-v1"
+    },
+    "type": "Microsoft.Network/routeTables"
+  },
+  {
+    "changedTime": "2026-10-31T09:00:04.635285+00:00",
+    "createdTime": "2026-10-31T08:57:18.012448+00:00",
+    "extendedLocation": null,
+    "id": "/subscriptions/9bd9cf0b-dfc1-4fd3-833c-9fdf4d49d9d2/resourceGroups/AzVerify1/providers/Microsoft.Storage/storageAccounts/azvft19bd9cf0b",
+    "identity": {
+      "principalId": null,
+      "tenantId": null,
+      "type": "UserAssigned",
+      "userAssignedIdentities": {
+        "/subscriptions/9bd9cf0b-dfc1-4fd3-833c-9fdf4d49d9d2/resourceGroups/AzVerify1/providers/Microsoft.ManagedIdentity/userAssignedIdentities/azvft1-identity": {
+          "clientId": null,
+          "principalId": null
+        }
+      }
+    },
+    "kind": "StorageV2",
+    "location": "swedencentral",
+    "managedBy": null,
+    "name": "azvft19bd9cf0b",
+    "plan": null,
+    "properties": null,
+    "provisioningState": "Succeeded",
+    "resourceGroup": "AzVerify1",
+    "sku": {
+      "capacity": null,
+      "family": null,
+      "model": null,
+      "name": "Standard_LRS",
+      "size": null,
+      "tier": "Standard"
+    },
+    "tags": {
+      "azverifyFunctionalTest": "expanded-v1"
+    },
+    "type": "Microsoft.Storage/storageAccounts"
+  },
+  {
+    "changedTime": "2026-10-31T09:00:05.267803+00:00",
+    "createdTime": "2026-10-31T08:57:29.083321+00:00",
+    "extendedLocation": null,
+    "id": "/subscriptions/9bd9cf0b-dfc1-4fd3-833c-9fdf4d49d9d2/resourceGroups/AzVerify1/providers/Microsoft.Network/networkInterfaces/azvft1-nic-0",
+    "identity": null,
+    "kind": "Regular",
+    "location": "swedencentral",
+    "managedBy": null,
+    "name": "azvft1-nic-0",
+    "plan": null,
+    "properties": null,
+    "provisioningState": "Succeeded",
+    "resourceGroup": "AzVerify1",
+    "sku": null,
+    "tags": {
+      "azverifyFunctionalTest": "expanded-v1"
+    },
+    "type": "Microsoft.Network/networkInterfaces"
+  },
+  {
+    "changedTime": "2026-10-31T09:00:05.917189+00:00",
+    "createdTime": "2026-10-31T08:57:29.589288+00:00",
+    "extendedLocation": null,
+    "id": "/subscriptions/9bd9cf0b-dfc1-4fd3-833c-9fdf4d49d9d2/resourceGroups/AzVerify1/providers/Microsoft.Network/networkInterfaces/azvft1-nic-1",
+    "identity": null,
+    "kind": "Regular",
+    "location": "swedencentral",
+    "managedBy": null,
+    "name": "azvft1-nic-1",
+    "plan": null,
+    "properties": null,
+    "provisioningState": "Succeeded",
+    "resourceGroup": "AzVerify1",
+    "sku": null,
+    "tags": {
+      "azverifyFunctionalTest": "expanded-v1"
+    },
+    "type": "Microsoft.Network/networkInterfaces"
+  },
+  {
+    "changedTime": "2026-10-31T08:57:39.619030+00:00",
+    "createdTime": "2026-10-31T08:57:38.243660+00:00",
+    "extendedLocation": null,
+    "id": "/subscriptions/9bd9cf0b-dfc1-4fd3-833c-9fdf4d49d9d2/resourceGroups/AzVerify1/providers/Microsoft.Insights/components/azvft1-insights",
+    "identity": null,
+    "kind": "web",
+    "location": "swedencentral",
+    "managedBy": null,
+    "name": "azvft1-insights",
+    "plan": null,
+    "properties": null,
+    "provisioningState": "Succeeded",
+    "resourceGroup": "AzVerify1",
+    "sku": null,
+    "tags": {
+      "azverifyFunctionalTest": "expanded-v1"
+    },
+    "type": "Microsoft.Insights/components"
+  },
+  {
+    "changedTime": "2026-10-31T08:58:43.680138+00:00",
+    "createdTime": "2026-10-31T08:58:42.726961+00:00",
+    "extendedLocation": null,
+    "id": "/subscriptions/9bd9cf0b-dfc1-4fd3-833c-9fdf4d49d9d2/resourceGroups/AzVerify1/providers/Microsoft.Insights/actiongroups/azvft1-actions",
+    "identity": null,
+    "kind": null,
+    "location": "global",
+    "managedBy": null,
+    "name": "azvft1-actions",
+    "plan": null,
+    "properties": null,
+    "provisioningState": "Succeeded",
+    "resourceGroup": "AzVerify1",
+    "sku": null,
+    "tags": {
+      "azverifyFunctionalTest": "expanded-v1"
+    },
+    "type": "Microsoft.Insights/actiongroups"
+  },
+  {
+    "changedTime": "2026-10-31T09:01:16.492270+00:00",
+    "createdTime": "2026-10-31T09:01:15.277903+00:00",
+    "extendedLocation": null,
+    "id": "/subscriptions/9bd9cf0b-dfc1-4fd3-833c-9fdf4d49d9d2/resourceGroups/AzVerify2/providers/Microsoft.ManagedIdentity/userAssignedIdentities/azvft2-identity",
+    "identity": null,
+    "kind": null,
+    "location": "swedencentral",
+    "managedBy": null,
+    "name": "azvft2-identity",
+    "plan": null,
+    "properties": null,
+    "provisioningState": "Succeeded",
+    "resourceGroup": "AzVerify2",
+    "sku": null,
+    "tags": {
+      "azverifyFunctionalTest": "expanded-v1"
+    },
+    "type": "Microsoft.ManagedIdentity/userAssignedIdentities"
+  },
+  {
+    "changedTime": "2026-10-31T09:01:17.556764+00:00",
+    "createdTime": "2026-10-31T09:01:15.703521+00:00",
+    "extendedLocation": null,
+    "id": "/subscriptions/9bd9cf0b-dfc1-4fd3-833c-9fdf4d49d9d2/resourceGroups/AzVerify2/providers/Microsoft.KeyVault/vaults/azvft2-kv-9bd9cf0b",
+    "identity": null,
+    "kind": null,
+    "location": "swedencentral",
+    "managedBy": null,
+    "name": "azvft2-kv-9bd9cf0b",
+    "plan": null,
+    "properties": null,
+    "provisioningState": "Succeeded",
+    "resourceGroup": "AzVerify2",
+    "sku": null,
+    "systemData": {
+      "createdAt": "2026-10-31T09:01:15.728Z",
+      "createdBy": "ca4f17fd-ff1c-4c81-b024-056f773f9809",
+      "createdByType": "Application",
+      "lastModifiedAt": "2026-10-31T09:01:15.728Z",
+      "lastModifiedBy": "ca4f17fd-ff1c-4c81-b024-056f773f9809",
+      "lastModifiedByType": "Application"
+    },
+    "tags": {
+      "azverifyFunctionalTest": "expanded-v1"
+    },
+    "type": "Microsoft.KeyVault/vaults"
+  },
+  {
+    "changedTime": "2026-10-31T09:01:17.365537+00:00",
+    "createdTime": "2026-10-31T09:01:16.576441+00:00",
+    "extendedLocation": null,
+    "id": "/subscriptions/9bd9cf0b-dfc1-4fd3-833c-9fdf4d49d9d2/resourceGroups/AzVerify2/providers/Microsoft.Network/routeTables/azvft2-routes",
+    "identity": null,
+    "kind": null,
+    "location": "swedencentral",
+    "managedBy": null,
+    "name": "azvft2-routes",
+    "plan": null,
+    "properties": null,
+    "provisioningState": "Succeeded",
+    "resourceGroup": "AzVerify2",
+    "sku": null,
+    "tags": {
+      "azverifyFunctionalTest": "expanded-v1"
+    },
+    "type": "Microsoft.Network/routeTables"
+  },
+  {
+    "changedTime": "2026-10-31T09:01:22.157169+00:00",
+    "createdTime": "2026-10-31T09:01:16.574430+00:00",
+    "extendedLocation": null,
+    "id": "/subscriptions/9bd9cf0b-dfc1-4fd3-833c-9fdf4d49d9d2/resourceGroups/AzVerify2/providers/Microsoft.Network/virtualNetworks/azvft2-vnet",
+    "identity": null,
+    "kind": null,
+    "location": "swedencentral",
+    "managedBy": null,
+    "name": "azvft2-vnet",
+    "plan": null,
+    "properties": null,
+    "provisioningState": "Succeeded",
+    "resourceGroup": "AzVerify2",
+    "sku": null,
+    "tags": {
+      "azverifyFunctionalTest": "expanded-v1"
+    },
+    "type": "Microsoft.Network/virtualNetworks"
+  },
+  {
+    "changedTime": "2026-10-31T09:01:19.412468+00:00",
+    "createdTime": "2026-10-31T09:01:16.581074+00:00",
+    "extendedLocation": null,
+    "id": "/subscriptions/9bd9cf0b-dfc1-4fd3-833c-9fdf4d49d9d2/resourceGroups/AzVerify2/providers/Microsoft.Network/networkSecurityGroups/azvft2-nsg",
+    "identity": null,
+    "kind": null,
+    "location": "swedencentral",
+    "managedBy": null,
+    "name": "azvft2-nsg",
+    "plan": null,
+    "properties": null,
+    "provisioningState": "Succeeded",
+    "resourceGroup": "AzVerify2",
+    "sku": null,
+    "tags": {
+      "azverifyFunctionalTest": "expanded-v1"
+    },
+    "type": "Microsoft.Network/networkSecurityGroups"
+  },
+  {
+    "changedTime": "2026-10-31T09:01:38.907486+00:00",
+    "createdTime": "2026-10-31T09:01:17.662435+00:00",
+    "extendedLocation": null,
+    "id": "/subscriptions/9bd9cf0b-dfc1-4fd3-833c-9fdf4d49d9d2/resourceGroups/AzVerify2/providers/Microsoft.Storage/storageAccounts/azvft29bd9cf0b",
+    "identity": {
+      "principalId": null,
+      "tenantId": null,
+      "type": "UserAssigned",
+      "userAssignedIdentities": {
+        "/subscriptions/9bd9cf0b-dfc1-4fd3-833c-9fdf4d49d9d2/resourceGroups/AzVerify2/providers/Microsoft.ManagedIdentity/userAssignedIdentities/azvft2-identity": {
+          "clientId": "e4209766-c838-4868-af06-518a3b180690",
+          "principalId": "664ec28e-9458-4cc4-a7aa-c7be0b150e49",
+          "tenantId": "b9feaee7-c137-48f2-9423-2531591c48b4"
+        }
+      }
+    },
+    "kind": "StorageV2",
+    "location": "swedencentral",
+    "managedBy": null,
+    "name": "azvft29bd9cf0b",
+    "plan": null,
+    "properties": null,
+    "provisioningState": "Succeeded",
+    "resourceGroup": "AzVerify2",
+    "sku": {
+      "capacity": null,
+      "family": null,
+      "model": null,
+      "name": "Standard_LRS",
+      "size": null,
+      "tier": "Standard"
+    },
+    "tags": {
+      "azverifyFunctionalTest": "expanded-v1"
+    },
+    "type": "Microsoft.Storage/storageAccounts"
+  },
+  {
+    "changedTime": "2026-10-31T09:01:30.401984+00:00",
+    "createdTime": "2026-10-31T09:01:30.347741+00:00",
+    "extendedLocation": null,
+    "id": "/subscriptions/9bd9cf0b-dfc1-4fd3-833c-9fdf4d49d9d2/resourceGroups/AzVerify2/providers/Microsoft.Network/networkInterfaces/azvft2-nic-0",
+    "identity": null,
+    "kind": "Regular",
+    "location": "swedencentral",
+    "managedBy": null,
+    "name": "azvft2-nic-0",
+    "plan": null,
+    "properties": null,
+    "provisioningState": "Succeeded",
+    "resourceGroup": "AzVerify2",
+    "sku": null,
+    "tags": {
+      "azverifyFunctionalTest": "expanded-v1"
+    },
+    "type": "Microsoft.Network/networkInterfaces"
+  },
+  {
+    "changedTime": "2026-10-31T09:01:31.227166+00:00",
+    "createdTime": "2026-10-31T09:01:31.142973+00:00",
+    "extendedLocation": null,
+    "id": "/subscriptions/9bd9cf0b-dfc1-4fd3-833c-9fdf4d49d9d2/resourceGroups/AzVerify2/providers/Microsoft.Network/networkInterfaces/azvft2-nic-1",
+    "identity": null,
+    "kind": "Regular",
+    "location": "swedencentral",
+    "managedBy": null,
+    "name": "azvft2-nic-1",
+    "plan": null,
+    "properties": null,
+    "provisioningState": "Succeeded",
+    "resourceGroup": "AzVerify2",
+    "sku": null,
+    "tags": {
+      "azverifyFunctionalTest": "expanded-v1"
+    },
+    "type": "Microsoft.Network/networkInterfaces"
+  }
+]

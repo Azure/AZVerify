@@ -1,0 +1,16 @@
+get-rg1-diagram	0
+get-rg1-diagram-enrich	1
+get-rg1-bicep	0
+get-rg1-bicep-enrich	1
+get-rg2-bicep	0
+get-rg2-bicep-enrich	1
+get-offline-bicep	0
+get-offline-bicep-enrich	0
+select-extraexclude	0
+convert-bicep-rg1	0
+convert-bicep-rg2	0
+compare-quick-rg1	0
+compare-deep-rg1	0
+drift-rg1	0
+drift-rg2	0
+policy-probe	0

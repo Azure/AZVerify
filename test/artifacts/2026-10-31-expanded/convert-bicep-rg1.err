@@ -1,0 +1,4 @@
+[AzVerify] Running 'bicep build' with az.
+[AzVerify] Running 'bicep build-params' with az.
+[AzVerify] Running 'bicep build-params' with az.
+[AzVerify] Resolved all 17 resource name(s).

@@ -1,0 +1,826 @@
+{
+  "matches": [
+    {
+      "resourceA": {
+        "id": "identity",
+        "type": "Microsoft.ManagedIdentity/userAssignedIdentities",
+        "name": "app-identity",
+        "resourceGroup": "AzVerify1",
+        "location": null,
+        "properties": {
+          "containerName": "AzVerify1"
+        },
+        "tags": {},
+        "relationships": [
+          {
+            "targetId": "storage1",
+            "type": "depends"
+          },
+          {
+            "targetId": "rg1",
+            "type": "contains"
+          }
+        ]
+      },
+      "resourceB": {
+        "id": "/subscriptions/9bd9cf0b-dfc1-4fd3-833c-9fdf4d49d9d2/resourceGroups/AzVerify1/providers/Microsoft.ManagedIdentity/userAssignedIdentities/azvft1-identity",
+        "type": "Microsoft.ManagedIdentity/userAssignedIdentities",
+        "name": "azvft1-identity",
+        "resourceGroup": "AzVerify1",
+        "location": "swedencentral",
+        "properties": {},
+        "deployableProperties": {},
+        "tags": {
+          "azverifyFunctionalTest": "expanded-v1"
+        },
+        "sku": {},
+        "kind": "",
+        "identity": {},
+        "relationships": []
+      },
+      "status": "In Sync (name differs)",
+      "note": "Unique type in both models with different names"
+    },
+    {
+      "resourceA": {
+        "id": "rg1",
+        "type": "Microsoft.Resources/resourceGroups",
+        "name": "AzVerify1",
+        "resourceGroup": "AzVerify1",
+        "location": null,
+        "properties": {},
+        "tags": {},
+        "relationships": []
+      },
+      "resourceB": null,
+      "status": "Diagram Only",
+      "note": "Present only in first model"
+    },
+    {
+      "resourceA": {
+        "id": "rg2",
+        "type": "Microsoft.Resources/resourceGroups",
+        "name": "AzVerify2",
+        "resourceGroup": "AzVerify2",
+        "location": null,
+        "properties": {},
+        "tags": {},
+        "relationships": []
+      },
+      "resourceB": null,
+      "status": "Diagram Only",
+      "note": "Present only in first model"
+    },
+    {
+      "resourceA": {
+        "id": "hub",
+        "type": "Microsoft.Network/virtualNetworks",
+        "name": "hub-vnet",
+        "resourceGroup": "AzVerify1",
+        "location": null,
+        "properties": {
+          "containerName": "AzVerify1"
+        },
+        "tags": {},
+        "relationships": [
+          {
+            "targetId": "spoke",
+            "type": "peers"
+          },
+          {
+            "targetId": "rg1",
+            "type": "contains"
+          }
+        ]
+      },
+      "resourceB": null,
+      "status": "Diagram Only",
+      "note": "Present only in first model"
+    },
+    {
+      "resourceA": {
+        "id": "spoke",
+        "type": "Microsoft.Network/virtualNetworks",
+        "name": "spoke-vnet",
+        "resourceGroup": "AzVerify2",
+        "location": null,
+        "properties": {
+          "containerName": "AzVerify2"
+        },
+        "tags": {},
+        "relationships": [
+          {
+            "targetId": "rg2",
+            "type": "contains"
+          }
+        ]
+      },
+      "resourceB": null,
+      "status": "Diagram Only",
+      "note": "Present only in first model"
+    },
+    {
+      "resourceA": {
+        "id": "ingress",
+        "type": "Microsoft.Network/virtualNetworks/subnets",
+        "name": "ingress",
+        "resourceGroup": null,
+        "location": null,
+        "properties": {
+          "containerName": "hub-vnet"
+        },
+        "tags": {},
+        "relationships": [
+          {
+            "targetId": "hub",
+            "type": "contains"
+          }
+        ]
+      },
+      "resourceB": null,
+      "status": "Diagram Only",
+      "note": "Present only in first model"
+    },
+    {
+      "resourceA": {
+        "id": "appnet",
+        "type": "Microsoft.Network/virtualNetworks/subnets",
+        "name": "application",
+        "resourceGroup": null,
+        "location": null,
+        "properties": {
+          "containerName": "hub-vnet"
+        },
+        "tags": {},
+        "relationships": [
+          {
+            "targetId": "hub",
+            "type": "contains"
+          }
+        ]
+      },
+      "resourceB": null,
+      "status": "Diagram Only",
+      "note": "Present only in first model"
+    },
+    {
+      "resourceA": {
+        "id": "datanet",
+        "type": "Microsoft.Network/virtualNetworks/subnets",
+        "name": "data",
+        "resourceGroup": null,
+        "location": null,
+        "properties": {
+          "containerName": "hub-vnet"
+        },
+        "tags": {},
+        "relationships": [
+          {
+            "targetId": "hub",
+            "type": "contains"
+          }
+        ]
+      },
+      "resourceB": null,
+      "status": "Diagram Only",
+      "note": "Present only in first model"
+    },
+    {
+      "resourceA": {
+        "id": "spokenet",
+        "type": "Microsoft.Network/virtualNetworks/subnets",
+        "name": "application",
+        "resourceGroup": null,
+        "location": null,
+        "properties": {
+          "containerName": "spoke-vnet"
+        },
+        "tags": {},
+        "relationships": [
+          {
+            "targetId": "spoke",
+            "type": "contains"
+          }
+        ]
+      },
+      "resourceB": null,
+      "status": "Diagram Only",
+      "note": "Present only in first model"
+    },
+    {
+      "resourceA": {
+        "id": "nsg1",
+        "type": "Microsoft.Resources/unknown:Azure_Resource",
+        "name": "shared-nsg",
+        "resourceGroup": "AzVerify1",
+        "location": null,
+        "properties": {
+          "containerName": "AzVerify1"
+        },
+        "tags": {},
+        "relationships": [
+          {
+            "targetId": "rg1",
+            "type": "contains"
+          }
+        ]
+      },
+      "resourceB": null,
+      "status": "Diagram Only",
+      "note": "Present only in first model"
+    },
+    {
+      "resourceA": {
+        "id": "nsg2",
+        "type": "Microsoft.Resources/unknown:Azure_Resource",
+        "name": "shared-nsg",
+        "resourceGroup": "AzVerify2",
+        "location": null,
+        "properties": {
+          "containerName": "AzVerify2"
+        },
+        "tags": {},
+        "relationships": [
+          {
+            "targetId": "rg2",
+            "type": "contains"
+          }
+        ]
+      },
+      "resourceB": null,
+      "status": "Diagram Only",
+      "note": "Present only in first model"
+    },
+    {
+      "resourceA": {
+        "id": "route",
+        "type": "Microsoft.Resources/unknown:Azure_Resource",
+        "name": "hub-routes",
+        "resourceGroup": "AzVerify1",
+        "location": null,
+        "properties": {
+          "containerName": "AzVerify1"
+        },
+        "tags": {},
+        "relationships": [
+          {
+            "targetId": "rg1",
+            "type": "contains"
+          }
+        ]
+      },
+      "resourceB": null,
+      "status": "Diagram Only",
+      "note": "Present only in first model"
+    },
+    {
+      "resourceA": {
+        "id": "nic1",
+        "type": "Microsoft.Resources/unknown:Azure_Resource",
+        "name": "app-nic",
+        "resourceGroup": null,
+        "location": null,
+        "properties": {
+          "containerName": "application"
+        },
+        "tags": {},
+        "relationships": [
+          {
+            "targetId": "vm1",
+            "type": "depends"
+          },
+          {
+            "targetId": "appnet",
+            "type": "contains"
+          }
+        ]
+      },
+      "resourceB": null,
+      "status": "Diagram Only",
+      "note": "Present only in first model"
+    },
+    {
+      "resourceA": {
+        "id": "nic2",
+        "type": "Microsoft.Resources/unknown:Azure_Resource",
+        "name": "worker-nic",
+        "resourceGroup": null,
+        "location": null,
+        "properties": {
+          "containerName": "application"
+        },
+        "tags": {},
+        "relationships": [
+          {
+            "targetId": "vm2",
+            "type": "depends"
+          },
+          {
+            "targetId": "spokenet",
+            "type": "contains"
+          }
+        ]
+      },
+      "resourceB": null,
+      "status": "Diagram Only",
+      "note": "Present only in first model"
+    },
+    {
+      "resourceA": {
+        "id": "vm1",
+        "type": "Microsoft.Compute/virtualMachines",
+        "name": "app-vm",
+        "resourceGroup": null,
+        "location": null,
+        "properties": {
+          "containerName": "application"
+        },
+        "tags": {},
+        "relationships": [
+          {
+            "targetId": "appnet",
+            "type": "contains"
+          }
+        ]
+      },
+      "resourceB": null,
+      "status": "Diagram Only",
+      "note": "Present only in first model"
+    },
+    {
+      "resourceA": {
+        "id": "vm2",
+        "type": "Microsoft.Compute/virtualMachines",
+        "name": "worker-vm",
+        "resourceGroup": null,
+        "location": null,
+        "properties": {
+          "containerName": "application"
+        },
+        "tags": {},
+        "relationships": [
+          {
+            "targetId": "spokenet",
+            "type": "contains"
+          }
+        ]
+      },
+      "resourceB": null,
+      "status": "Diagram Only",
+      "note": "Present only in first model"
+    },
+    {
+      "resourceA": {
+        "id": "plan",
+        "type": "Microsoft.Web/serverFarms",
+        "name": "web-plan",
+        "resourceGroup": "AzVerify1",
+        "location": null,
+        "properties": {
+          "containerName": "AzVerify1"
+        },
+        "tags": {},
+        "relationships": [
+          {
+            "targetId": "web",
+            "type": "connects"
+          },
+          {
+            "targetId": "rg1",
+            "type": "contains"
+          }
+        ]
+      },
+      "resourceB": null,
+      "status": "Diagram Only",
+      "note": "Present only in first model"
+    },
+    {
+      "resourceA": {
+        "id": "web",
+        "type": "Microsoft.Web/sites",
+        "name": "web-app",
+        "resourceGroup": "AzVerify1",
+        "location": null,
+        "properties": {
+          "containerName": "AzVerify1"
+        },
+        "tags": {},
+        "relationships": [
+          {
+            "targetId": "appnet",
+            "type": "peers"
+          },
+          {
+            "targetId": "vault",
+            "type": "secures"
+          },
+          {
+            "targetId": "ai",
+            "type": "connects"
+          },
+          {
+            "targetId": "rg1",
+            "type": "contains"
+          }
+        ]
+      },
+      "resourceB": null,
+      "status": "Diagram Only",
+      "note": "Present only in first model"
+    },
+    {
+      "resourceA": {
+        "id": "storage1",
+        "type": "Microsoft.Resources/unknown:Azure_Resource",
+        "name": "primarydata",
+        "resourceGroup": "AzVerify1",
+        "location": null,
+        "properties": {
+          "containerName": "AzVerify1"
+        },
+        "tags": {},
+        "relationships": [
+          {
+            "targetId": "rg1",
+            "type": "contains"
+          }
+        ]
+      },
+      "resourceB": null,
+      "status": "Diagram Only",
+      "note": "Present only in first model"
+    },
+    {
+      "resourceA": {
+        "id": "storage2",
+        "type": "Microsoft.Resources/unknown:Azure_Resource",
+        "name": "replicadata",
+        "resourceGroup": "AzVerify2",
+        "location": null,
+        "properties": {
+          "containerName": "AzVerify2"
+        },
+        "tags": {},
+        "relationships": [
+          {
+            "targetId": "rg2",
+            "type": "contains"
+          }
+        ]
+      },
+      "resourceB": null,
+      "status": "Diagram Only",
+      "note": "Present only in first model"
+    },
+    {
+      "resourceA": {
+        "id": "vault",
+        "type": "Microsoft.Resources/unknown:Azure_Resource",
+        "name": "app-vault",
+        "resourceGroup": "AzVerify1",
+        "location": null,
+        "properties": {
+          "containerName": "AzVerify1"
+        },
+        "tags": {},
+        "relationships": [
+          {
+            "targetId": "rg1",
+            "type": "contains"
+          }
+        ]
+      },
+      "resourceB": null,
+      "status": "Diagram Only",
+      "note": "Present only in first model"
+    },
+    {
+      "resourceA": {
+        "id": "pe",
+        "type": "Microsoft.Network/privateEndpoints",
+        "name": "blob-private-endpoint",
+        "resourceGroup": null,
+        "location": null,
+        "properties": {
+          "containerName": "data"
+        },
+        "tags": {},
+        "relationships": [
+          {
+            "targetId": "storage1",
+            "type": "secures"
+          },
+          {
+            "targetId": "datanet",
+            "type": "contains"
+          }
+        ]
+      },
+      "resourceB": null,
+      "status": "Diagram Only",
+      "note": "Present only in first model"
+    },
+    {
+      "resourceA": {
+        "id": "dns",
+        "type": "Microsoft.Network/privateDnsZones",
+        "name": "privatelink.blob.core.windows.net",
+        "resourceGroup": "AzVerify1",
+        "location": null,
+        "properties": {
+          "containerName": "AzVerify1"
+        },
+        "tags": {},
+        "relationships": [
+          {
+            "targetId": "pe",
+            "type": "connects"
+          },
+          {
+            "targetId": "rg1",
+            "type": "contains"
+          }
+        ]
+      },
+      "resourceB": null,
+      "status": "Diagram Only",
+      "note": "Present only in first model"
+    },
+    {
+      "resourceA": {
+        "id": "logs",
+        "type": "Microsoft.OperationalInsights/workspaces",
+        "name": "central-logs",
+        "resourceGroup": "AzVerify1",
+        "location": null,
+        "properties": {
+          "containerName": "AzVerify1"
+        },
+        "tags": {},
+        "relationships": [
+          {
+            "targetId": "rg1",
+            "type": "contains"
+          }
+        ]
+      },
+      "resourceB": null,
+      "status": "Diagram Only",
+      "note": "Present only in first model"
+    },
+    {
+      "resourceA": {
+        "id": "ai",
+        "type": "Microsoft.Insights/components",
+        "name": "web-insights",
+        "resourceGroup": "AzVerify1",
+        "location": null,
+        "properties": {
+          "containerName": "AzVerify1"
+        },
+        "tags": {},
+        "relationships": [
+          {
+            "targetId": "logs",
+            "type": "connects"
+          },
+          {
+            "targetId": "rg1",
+            "type": "contains"
+          }
+        ]
+      },
+      "resourceB": null,
+      "status": "Diagram Only",
+      "note": "Present only in first model"
+    },
+    {
+      "resourceA": {
+        "id": "action",
+        "type": "Microsoft.Resources/unknown:Azure_Resource",
+        "name": "ops-actions",
+        "resourceGroup": "AzVerify1",
+        "location": null,
+        "properties": {
+          "containerName": "AzVerify1"
+        },
+        "tags": {},
+        "relationships": [
+          {
+            "targetId": "logs",
+            "type": "depends"
+          },
+          {
+            "targetId": "rg1",
+            "type": "contains"
+          }
+        ]
+      },
+      "resourceB": null,
+      "status": "Diagram Only",
+      "note": "Present only in first model"
+    },
+    {
+      "resourceA": null,
+      "resourceB": {
+        "id": "/subscriptions/9bd9cf0b-dfc1-4fd3-833c-9fdf4d49d9d2/resourceGroups/AzVerify1/providers/Microsoft.Storage/storageAccounts/azvtest9bd9cf0b",
+        "type": "Microsoft.Storage/storageAccounts",
+        "name": "azvtest9bd9cf0b",
+        "resourceGroup": "AzVerify1",
+        "location": "swedencentral",
+        "properties": {},
+        "deployableProperties": {},
+        "tags": {
+          "azverifyFunctionalTest": "true"
+        },
+        "sku": {
+          "family": {},
+          "capacity": {},
+          "name": "Standard_LRS",
+          "size": {},
+          "model": {},
+          "tier": "Standard"
+        },
+        "kind": "StorageV2",
+        "identity": {},
+        "relationships": []
+      },
+      "status": "Azure Only",
+      "note": "Present only in second model"
+    },
+    {
+      "resourceA": null,
+      "resourceB": {
+        "id": "/subscriptions/9bd9cf0b-dfc1-4fd3-833c-9fdf4d49d9d2/resourceGroups/AzVerify1/providers/Microsoft.KeyVault/vaults/azvft1-kv-9bd9cf0b",
+        "type": "Microsoft.KeyVault/vaults",
+        "name": "azvft1-kv-9bd9cf0b",
+        "resourceGroup": "AzVerify1",
+        "location": "swedencentral",
+        "properties": {},
+        "deployableProperties": {},
+        "tags": {
+          "azverifyFunctionalTest": "expanded-v1"
+        },
+        "sku": {},
+        "kind": "",
+        "identity": {},
+        "relationships": []
+      },
+      "status": "Azure Only",
+      "note": "Present only in second model"
+    },
+    {
+      "resourceA": null,
+      "resourceB": {
+        "id": "/subscriptions/9bd9cf0b-dfc1-4fd3-833c-9fdf4d49d9d2/resourceGroups/AzVerify1/providers/Microsoft.Network/networkSecurityGroups/azvft1-nsg",
+        "type": "Microsoft.Network/networkSecurityGroups",
+        "name": "azvft1-nsg",
+        "resourceGroup": "AzVerify1",
+        "location": "swedencentral",
+        "properties": {},
+        "deployableProperties": {},
+        "tags": {
+          "azverifyFunctionalTest": "expanded-v1"
+        },
+        "sku": {},
+        "kind": "",
+        "identity": {},
+        "relationships": []
+      },
+      "status": "Azure Only",
+      "note": "Present only in second model"
+    },
+    {
+      "resourceA": null,
+      "resourceB": {
+        "id": "/subscriptions/9bd9cf0b-dfc1-4fd3-833c-9fdf4d49d9d2/resourceGroups/AzVerify1/providers/Microsoft.Network/virtualNetworks/azvft1-vnet",
+        "type": "Microsoft.Network/virtualNetworks",
+        "name": "azvft1-vnet",
+        "resourceGroup": "AzVerify1",
+        "location": "swedencentral",
+        "properties": {},
+        "deployableProperties": {},
+        "tags": {
+          "azverifyFunctionalTest": "expanded-v1"
+        },
+        "sku": {},
+        "kind": "",
+        "identity": {},
+        "relationships": []
+      },
+      "status": "Azure Only",
+      "note": "Present only in second model"
+    },
+    {
+      "resourceA": null,
+      "resourceB": {
+        "id": "/subscriptions/9bd9cf0b-dfc1-4fd3-833c-9fdf4d49d9d2/resourceGroups/AzVerify1/providers/Microsoft.Network/routeTables/azvft1-routes",
+        "type": "Microsoft.Network/routeTables",
+        "name": "azvft1-routes",
+        "resourceGroup": "AzVerify1",
+        "location": "swedencentral",
+        "properties": {},
+        "deployableProperties": {},
+        "tags": {
+          "azverifyFunctionalTest": "expanded-v1"
+        },
+        "sku": {},
+        "kind": "",
+        "identity": {},
+        "relationships": []
+      },
+      "status": "Azure Only",
+      "note": "Present only in second model"
+    },
+    {
+      "resourceA": null,
+      "resourceB": {
+        "id": "/subscriptions/9bd9cf0b-dfc1-4fd3-833c-9fdf4d49d9d2/resourceGroups/AzVerify1/providers/Microsoft.Storage/storageAccounts/azvft19bd9cf0b",
+        "type": "Microsoft.Storage/storageAccounts",
+        "name": "azvft19bd9cf0b",
+        "resourceGroup": "AzVerify1",
+        "location": "swedencentral",
+        "properties": {},
+        "deployableProperties": {},
+        "tags": {
+          "azverifyFunctionalTest": "expanded-v1"
+        },
+        "sku": {
+          "family": {},
+          "capacity": {},
+          "name": "Standard_LRS",
+          "size": {},
+          "model": {},
+          "tier": "Standard"
+        },
+        "kind": "StorageV2",
+        "identity": {
+          "tenantId": {},
+          "principalId": {},
+          "userAssignedIdentities": {
+            "/subscriptions/9bd9cf0b-dfc1-4fd3-833c-9fdf4d49d9d2/resourceGroups/AzVerify1/providers/Microsoft.ManagedIdentity/userAssignedIdentities/azvft1-identity": {
+              "clientId": {},
+              "principalId": {}
+            }
+          },
+          "type": "UserAssigned"
+        },
+        "relationships": []
+      },
+      "status": "Azure Only",
+      "note": "Present only in second model"
+    },
+    {
+      "resourceA": null,
+      "resourceB": {
+        "id": "/subscriptions/9bd9cf0b-dfc1-4fd3-833c-9fdf4d49d9d2/resourceGroups/AzVerify1/providers/Microsoft.Network/networkInterfaces/azvft1-nic-0",
+        "type": "Microsoft.Network/networkInterfaces",
+        "name": "azvft1-nic-0",
+        "resourceGroup": "AzVerify1",
+        "location": "swedencentral",
+        "properties": {},
+        "deployableProperties": {},
+        "tags": {
+          "azverifyFunctionalTest": "expanded-v1"
+        },
+        "sku": {},
+        "kind": "Regular",
+        "identity": {},
+        "relationships": []
+      },
+      "status": "Azure Only",
+      "note": "Present only in second model"
+    },
+    {
+      "resourceA": null,
+      "resourceB": {
+        "id": "/subscriptions/9bd9cf0b-dfc1-4fd3-833c-9fdf4d49d9d2/resourceGroups/AzVerify1/providers/Microsoft.Network/networkInterfaces/azvft1-nic-1",
+        "type": "Microsoft.Network/networkInterfaces",
+        "name": "azvft1-nic-1",
+        "resourceGroup": "AzVerify1",
+        "location": "swedencentral",
+        "properties": {},
+        "deployableProperties": {},
+        "tags": {
+          "azverifyFunctionalTest": "expanded-v1"
+        },
+        "sku": {},
+        "kind": "Regular",
+        "identity": {},
+        "relationships": []
+      },
+      "status": "Azure Only",
+      "note": "Present only in second model"
+    }
+  ],
+  "labelA": "Diagram",
+  "labelB": "Azure",
+  "summary": {
+    "onlyA": 25,
+    "onlyB": 8,
+    "inSyncNameDiff": 1,
+    "inSync": 0,
+    "total": 34
+  }
+}
