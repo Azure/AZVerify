@@ -1,0 +1,22 @@
+{
+  "servers": {
+    "drawio": {
+      "type": "http",
+      "url": "https://mcp.draw.io/mcp"
+    },
+    "azure": {
+      "type": "stdio",
+      "command": "npx",
+      "args": ["-y", "@azure/mcp@latest", "server", "start"]
+    },
+    "bicep": {
+      "type": "stdio",
+      "command": "dnx",
+      "args": ["Azure.Bicep.McpServer@0.48.1", "--yes"]
+    },
+    "microsoft-learn": {
+      "type": "http",
+      "url": "https://learn.microsoft.com/api/mcp"
+    }
+  }
+}
