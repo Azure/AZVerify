@@ -527,6 +527,38 @@ try {
     $enrichedActual = Read-JsonFile $enrichedOutputPath
     Assert-Equal $enrichedActual.resources[0].properties.availabilityZone '1' 'Legacy enrichment retains flattened availability zone'
     Assert-Equal $enrichedActual.resources[0].comparisonProperties.availabilityZone '1' 'Legacy enrichment emits canonical comparison properties'
+    $actionGroupInputPath = Join-Path $workRoot 'action-group-input.json'
+    $actionGroupOutputPath = Join-Path $workRoot 'action-group-model.json'
+    $actionGroupResource = @{
+        id = New-ResourceId 'Microsoft.Insights/actionGroups' 'secret-receivers'
+        name = 'secret-receivers'; type = 'Microsoft.Insights/actionGroups'; location = 'global'
+        properties = @{
+            azureFunctionReceivers = @(@{ name = 'function'; httpTriggerUrl = 'https://example.invalid/function?code=sample' })
+            logicAppReceivers = @(@{ name = 'logic-app'; callbackUrl = 'https://example.invalid/callback?sig=sample' })
+            webhookReceivers = @(@{ name = 'webhook'; serviceUri = 'https://example.invalid/webhook?token=sample' })
+        }
+    }
+    Write-JsonFile @($actionGroupResource) $actionGroupInputPath
+    & (Join-Path $shared 'Get-AzureResourceModel.ps1') -FromJson $actionGroupInputPath -Enrich -StripReadOnly -OutFile $actionGroupOutputPath
+    Assert-Equal $LASTEXITCODE 0 'Action-group receiver model generation'
+    $actionGroup = (Read-JsonFile $actionGroupOutputPath).resources[0]
+    $secureReceiverPaths = @(
+        'azureFunctionReceivers.httpTriggerUrl',
+        'logicAppReceivers.callbackUrl',
+        'webhookReceivers.serviceUri'
+    )
+    foreach ($path in $secureReceiverPaths) {
+        Assert-True ($actionGroup.secrets -contains $path) "Action-group URL is reported as a secure input: $path"
+    }
+    Assert-Equal $actionGroup.properties.azureFunctionReceivers[0].httpTriggerUrl '***' 'Raw function URL is masked'
+    Assert-Equal $actionGroup.deployableProperties.azureFunctionReceivers[0].httpTriggerUrl '***' 'Deployable function URL is masked'
+    Assert-Equal $actionGroup.comparisonProperties.azureFunctionReceivers[0].httpTriggerUrl '***' 'Comparison function URL is masked'
+    Assert-Equal $actionGroup.properties.logicAppReceivers[0].callbackUrl '***' 'Raw Logic App callback URL is masked'
+    Assert-Equal $actionGroup.deployableProperties.logicAppReceivers[0].callbackUrl '***' 'Deployable Logic App callback URL is masked'
+    Assert-Equal $actionGroup.comparisonProperties.logicAppReceivers[0].callbackUrl '***' 'Comparison Logic App callback URL is masked'
+    Assert-Equal $actionGroup.properties.webhookReceivers[0].serviceUri '***' 'Raw webhook URI is masked'
+    Assert-Equal $actionGroup.deployableProperties.webhookReceivers[0].serviceUri '***' 'Deployable webhook URI is masked'
+    Assert-Equal $actionGroup.comparisonProperties.webhookReceivers[0].serviceUri '***' 'Comparison webhook URI is masked'
     $enrichedExpectedPath = Join-Path $workRoot 'enriched-expected.json'
     Write-JsonFile @{ resources = @(@{
         id = $enrichedResource.id; name = 'zone-vm'; type = $enrichedResource.type

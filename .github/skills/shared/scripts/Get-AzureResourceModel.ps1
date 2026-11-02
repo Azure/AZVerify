@@ -113,6 +113,7 @@ $alwaysRemoveAnyDepth = [System.Collections.Generic.HashSet[string]]::new([strin
 $alwaysRemoveAtRoot = [System.Collections.Generic.HashSet[string]]::new([string[]]$readOnlyConfig.alwaysRemoveAtRoot, [System.StringComparer]::OrdinalIgnoreCase)
 $secretNameRegexes = foreach ($pattern in $readOnlyConfig.secretPatterns.namePatterns) { [System.Management.Automation.WildcardPattern]::new($pattern, 'IgnoreCase') }
 $secretExclusionRegexes = foreach ($pattern in $readOnlyConfig.secretPatterns.nameExclusionPatterns) { [System.Management.Automation.WildcardPattern]::new($pattern, 'IgnoreCase') }
+$secretPathRegexes = foreach ($pattern in $readOnlyConfig.secretPatterns.pathPatterns) { [System.Management.Automation.WildcardPattern]::new($pattern, 'IgnoreCase') }
 $maskedValueRegex = [regex]::new($readOnlyConfig.secretPatterns.maskedValueRegex)
 
 $isOfflineMode = $PSCmdlet.ParameterSetName -eq 'Offline'
@@ -360,7 +361,7 @@ function Find-SecretProperty {
             $childPath = if ($Path) { "$Path.$name" } else { $name }
             $value = $InputObject[$key]
 
-            $isSecret = Test-SecretName -Name $name
+            $isSecret = (Test-SecretName -Name $name) -or @($secretPathRegexes | Where-Object { $_.IsMatch($childPath) }).Count -gt 0
             if (-not $isSecret -and $value -is [string] -and $maskedValueRegex.IsMatch($value)) {
                 $isSecret = $true
             }
@@ -855,6 +856,11 @@ try {
 
         $deployableSecrets = New-Object System.Collections.Generic.List[string]
         Find-SecretProperty -InputObject $deployableProperties -Found $deployableSecrets
+
+        if ($modelResource.Contains('comparisonProperties')) {
+            $comparisonSecrets = New-Object System.Collections.Generic.List[string]
+            Find-SecretProperty -InputObject $modelResource['comparisonProperties'] -Found $comparisonSecrets
+        }
 
         # Raw-only secrets are masked above but cannot become Bicep parameters.
         $secrets = $deployableSecrets
