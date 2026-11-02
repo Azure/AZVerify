@@ -76,7 +76,8 @@
       "keySource",
       "keyType",
       "keyCreationTime",
-      "key[0-9]*"
+      "key[0-9]*",
+      "allowSharedKeyAccess"
     ],
     "pathPatterns": [
       "azureFunctionReceivers.httpTriggerUrl",

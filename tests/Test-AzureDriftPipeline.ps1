@@ -559,6 +559,32 @@ try {
     Assert-Equal $actionGroup.properties.webhookReceivers[0].serviceUri '***' 'Raw webhook URI is masked'
     Assert-Equal $actionGroup.deployableProperties.webhookReceivers[0].serviceUri '***' 'Deployable webhook URI is masked'
     Assert-Equal $actionGroup.comparisonProperties.webhookReceivers[0].serviceUri '***' 'Comparison webhook URI is masked'
+    $sharedKeyInputPath = Join-Path $workRoot 'shared-key-input.json'
+    $sharedKeyOutputPath = Join-Path $workRoot 'shared-key-model.json'
+    $sharedKeyResources = @(
+        @{
+            id = New-ResourceId 'Microsoft.Storage/storageAccounts' 'shared-key-disabled'
+            name = 'shared-key-disabled'; type = 'Microsoft.Storage/storageAccounts'; location = 'eastus'
+            properties = @{ allowSharedKeyAccess = $false }
+        },
+        @{
+            id = New-ResourceId 'Microsoft.Storage/storageAccounts' 'shared-key-enabled'
+            name = 'shared-key-enabled'; type = 'Microsoft.Storage/storageAccounts'; location = 'eastus'
+            properties = @{ allowSharedKeyAccess = $true }
+        }
+    )
+    Write-JsonFile $sharedKeyResources $sharedKeyInputPath
+    & (Join-Path $shared 'Get-AzureResourceModel.ps1') -FromJson $sharedKeyInputPath -Enrich -StripReadOnly -OutFile $sharedKeyOutputPath
+    Assert-Equal $LASTEXITCODE 0 'Storage shared-key access model generation'
+    $sharedKeyModel = Read-JsonFile $sharedKeyOutputPath
+    $sharedKeyDisabled = $sharedKeyModel.resources | Where-Object name -eq 'shared-key-disabled'
+    $sharedKeyEnabled = $sharedKeyModel.resources | Where-Object name -eq 'shared-key-enabled'
+    Assert-True ($sharedKeyDisabled.deployableProperties.allowSharedKeyAccess -is [bool]) 'Disabled shared-key access remains a boolean'
+    Assert-Equal $sharedKeyDisabled.deployableProperties.allowSharedKeyAccess $false 'Disabled shared-key access survives extraction'
+    Assert-True ($sharedKeyEnabled.deployableProperties.allowSharedKeyAccess -is [bool]) 'Enabled shared-key access remains a boolean'
+    Assert-Equal $sharedKeyEnabled.deployableProperties.allowSharedKeyAccess $true 'Enabled shared-key access survives extraction'
+    Assert-True ($null -eq $sharedKeyDisabled.PSObject.Properties['secrets']) 'Disabled shared-key access does not require a secure parameter'
+    Assert-True ($null -eq $sharedKeyEnabled.PSObject.Properties['secrets']) 'Enabled shared-key access does not require a secure parameter'
     $enrichedExpectedPath = Join-Path $workRoot 'enriched-expected.json'
     Write-JsonFile @{ resources = @(@{
         id = $enrichedResource.id; name = 'zone-vm'; type = $enrichedResource.type
