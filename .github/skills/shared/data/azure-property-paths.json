@@ -256,6 +256,22 @@
         {
           "name": "enableHierarchicalNamespace",
           "armJsonPath": "properties.isHnsEnabled"
+        },
+        {
+          "name": "allowSharedKeyAccess",
+          "armJsonPath": "properties.allowSharedKeyAccess"
+        },
+        {
+          "name": "defaultToOAuthAuthentication",
+          "armJsonPath": "properties.defaultToOAuthAuthentication"
+        },
+        {
+          "name": "networkAcls",
+          "armJsonPath": "properties.networkAcls"
+        },
+        {
+          "name": "encryption",
+          "armJsonPath": "properties.encryption"
         }
       ]
     },
@@ -398,6 +414,22 @@
         {
           "name": "enableDdosProtection",
           "armJsonPath": "properties.enableDdosProtection"
+        },
+        {
+          "name": "subnets",
+          "armJsonPath": "properties.subnets"
+        },
+        {
+          "name": "dnsServers",
+          "armJsonPath": "properties.dhcpOptions.dnsServers"
+        },
+        {
+          "name": "enableVmProtection",
+          "armJsonPath": "properties.enableVmProtection"
+        },
+        {
+          "name": "flowTimeoutInMinutes",
+          "armJsonPath": "properties.flowTimeoutInMinutes"
         }
       ]
     },
@@ -539,6 +571,34 @@
           "name": "privateIPAllocationMethod",
           "normalization": "caseInsensitive",
           "armJsonPath": "properties.ipConfigurations[0].properties.privateIPAllocationMethod"
+        },
+        {
+          "name": "ipConfigurations",
+          "armJsonPath": "properties.ipConfigurations"
+        },
+        {
+          "name": "dnsSettings",
+          "armJsonPath": "properties.dnsSettings"
+        },
+        {
+          "name": "networkSecurityGroup",
+          "armJsonPath": "properties.networkSecurityGroup"
+        }
+      ]
+    },
+    {
+      "resourceType": "Microsoft.Network/routeTables",
+      "mcpTool": null,
+      "fallback": "az network route-table show --ids <resourceId> -o json",
+      "severity": "standard",
+      "properties": [
+        {
+          "name": "disableBgpRoutePropagation",
+          "armJsonPath": "properties.disableBgpRoutePropagation"
+        },
+        {
+          "name": "routes",
+          "armJsonPath": "properties.routes"
         }
       ]
     },
@@ -643,6 +703,22 @@
         {
           "name": "enablePurgeProtection",
           "armJsonPath": "properties.enablePurgeProtection"
+        },
+        {
+          "name": "networkAcls",
+          "armJsonPath": "properties.networkAcls"
+        },
+        {
+          "name": "enabledForDeployment",
+          "armJsonPath": "properties.enabledForDeployment"
+        },
+        {
+          "name": "enabledForDiskEncryption",
+          "armJsonPath": "properties.enabledForDiskEncryption"
+        },
+        {
+          "name": "enabledForTemplateDeployment",
+          "armJsonPath": "properties.enabledForTemplateDeployment"
         }
       ]
     },
@@ -778,6 +854,24 @@
           "name": "ingestionMode",
           "normalization": "caseInsensitive",
           "armJsonPath": "properties.IngestionMode"
+        },
+        {
+          "name": "workspaceResourceId",
+          "armJsonPath": "properties.WorkspaceResourceId"
+        },
+        {
+          "name": "publicNetworkAccessForIngestion",
+          "normalization": "caseInsensitive",
+          "armJsonPath": "properties.PublicNetworkAccessForIngestion"
+        },
+        {
+          "name": "publicNetworkAccessForQuery",
+          "normalization": "caseInsensitive",
+          "armJsonPath": "properties.PublicNetworkAccessForQuery"
+        },
+        {
+          "name": "disableIpMasking",
+          "armJsonPath": "properties.DisableIpMasking"
         }
       ]
     },
@@ -794,6 +888,76 @@
         {
           "name": "retentionInDays",
           "armJsonPath": "properties.retentionInDays"
+        },
+        {
+          "name": "publicNetworkAccessForIngestion",
+          "normalization": "caseInsensitive",
+          "armJsonPath": "properties.publicNetworkAccessForIngestion"
+        },
+        {
+          "name": "publicNetworkAccessForQuery",
+          "normalization": "caseInsensitive",
+          "armJsonPath": "properties.publicNetworkAccessForQuery"
+        },
+        {
+          "name": "features",
+          "armJsonPath": "properties.features"
+        }
+      ]
+    },
+    {
+      "resourceType": "Microsoft.Insights/actionGroups",
+      "mcpTool": null,
+      "fallback": "az monitor action-group show --ids <resourceId> -o json",
+      "severity": "standard",
+      "properties": [
+        {
+          "name": "enabled",
+          "armJsonPath": "properties.enabled"
+        },
+        {
+          "name": "groupShortName",
+          "armJsonPath": "properties.groupShortName"
+        },
+        {
+          "name": "emailReceivers",
+          "armJsonPath": "properties.emailReceivers"
+        },
+        {
+          "name": "smsReceivers",
+          "armJsonPath": "properties.smsReceivers"
+        },
+        {
+          "name": "webhookReceivers",
+          "armJsonPath": "properties.webhookReceivers"
+        },
+        {
+          "name": "armRoleReceivers",
+          "armJsonPath": "properties.armRoleReceivers"
+        },
+        {
+          "name": "azureAppPushReceivers",
+          "armJsonPath": "properties.azureAppPushReceivers"
+        },
+        {
+          "name": "voiceReceivers",
+          "armJsonPath": "properties.voiceReceivers"
+        },
+        {
+          "name": "azureFunctionReceivers",
+          "armJsonPath": "properties.azureFunctionReceivers"
+        },
+        {
+          "name": "logicAppReceivers",
+          "armJsonPath": "properties.logicAppReceivers"
+        },
+        {
+          "name": "automationRunbookReceivers",
+          "armJsonPath": "properties.automationRunbookReceivers"
+        },
+        {
+          "name": "azureResourceManagerRoleReceivers",
+          "armJsonPath": "properties.azureResourceManagerRoleReceivers"
         }
       ]
     },
