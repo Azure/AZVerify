@@ -46,6 +46,7 @@
     "networkSecurityGroup.resourceGroup",
     "dnsSettings.appliedDnsServers",
     "dnsSettings.internalDomainNameSuffix",
+    "dnsSettings.internalFqdn",
     "routes.id",
     "routes.type",
     "routes.resourceGroup",
