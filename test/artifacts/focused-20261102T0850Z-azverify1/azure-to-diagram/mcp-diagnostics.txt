@@ -1,0 +1,2 @@
+ERRORS (will cause rendering issues):
+- Duplicate IDs: 0, 1

@@ -52,7 +52,7 @@ Each Azure environment is represented as a **resource model** — a JSON structu
 | `kind` | string | No | Deployable top-level resource kind from Azure. |
 | `identity` | object | No | Deployable managed identity configuration; computed IDs are removed when read-only stripping is enabled. |
 | `relationships` | array | No | Connections to other resources in the model. |
-| `secrets` | array | No | Dotted property paths holding secret values (e.g., `administratorLoginPassword`, `siteConfig.appSettings[APPINSIGHTS_INSTRUMENTATIONKEY]`). Detected values in `properties` are replaced with `***`; each path needs a `@secure()` parameter during generation. |
+| `secrets` | array | No | Dotted paths for secret-bearing `deployableProperties` that need user input (e.g., `administratorLoginPassword`). Raw `properties` values are also masked as `***`, but raw-only or computed secrets are not Bicep parameters. |
 
 ## Script I/O Conventions
 

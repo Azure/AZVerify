@@ -152,7 +152,8 @@ function ConvertTo-Hashtable {
             $items.Add((ConvertTo-Hashtable -InputObject $item))
         }
 
-        return $items.ToArray()
+        # Preserve singleton arrays; PowerShell otherwise enumerates them into scalars.
+        return ,$items.ToArray()
     }
 
     return $InputObject
@@ -223,6 +224,10 @@ function Get-JsonPathValue {
         }
     }
 
+    if ($current -is [System.Array]) {
+        return ,$current
+    }
+
     return $current
 }
 
@@ -262,6 +267,18 @@ function Remove-ReadOnlyProperty {
             $childPath = if ($Path) { "$Path.$name" } else { $name }
 
             if (Test-PropertyPathRule -Rules $readOnlyConfig.keepPaths -Path $childPath) {
+                if (
+                    [string]::Equals($childPath, 'identity.userAssignedIdentities', [System.StringComparison]::OrdinalIgnoreCase) -and
+                    $InputObject[$key] -is [System.Collections.IDictionary]
+                ) {
+                    $identityReferences = @{}
+                    foreach ($identityResourceId in $InputObject[$key].Keys) {
+                        $identityReferences[[string]$identityResourceId] = @{}
+                    }
+                    $result[$key] = $identityReferences
+                    continue
+                }
+
                 $result[$key] = $InputObject[$key]
                 continue
             }
@@ -286,7 +303,8 @@ function Remove-ReadOnlyProperty {
             $items.Add((Remove-ReadOnlyProperty -InputObject $item -Path $Path))
         }
 
-        return $items.ToArray()
+        # Preserve singleton arrays; PowerShell otherwise enumerates them into scalars.
+        return ,$items.ToArray()
     }
 
     $InputObject
@@ -745,7 +763,11 @@ try {
                         foreach ($candidate in ($path -split '\s+or\s+')) {
                             $candidateValue = Get-JsonPathValue -InputObject $details -Path $candidate.Trim()
                             if ($null -ne $candidateValue) {
-                                $enrichedProperties[$property.name] = ConvertTo-Hashtable -InputObject $candidateValue
+                                $candidateValue = ConvertTo-Hashtable -InputObject $candidateValue
+                                if ($StripReadOnly.IsPresent) {
+                                    $candidateValue = Remove-ReadOnlyProperty -InputObject $candidateValue -Path ([string]$property.name)
+                                }
+                                $enrichedProperties[$property.name] = $candidateValue
                                 break
                             }
                         }
@@ -755,7 +777,11 @@ try {
 
                     $value = Get-JsonPathValue -InputObject $details -Path $path
                     if ($null -ne $value) {
-                        $enrichedProperties[$property.name] = ConvertTo-Hashtable -InputObject $value
+                        $value = ConvertTo-Hashtable -InputObject $value
+                        if ($StripReadOnly.IsPresent) {
+                            $value = Remove-ReadOnlyProperty -InputObject $value -Path ([string]$property.name)
+                        }
+                        $enrichedProperties[$property.name] = $value
                     }
                 }
             }
@@ -830,12 +856,8 @@ try {
         $deployableSecrets = New-Object System.Collections.Generic.List[string]
         Find-SecretProperty -InputObject $deployableProperties -Found $deployableSecrets
 
-        $secrets = New-Object System.Collections.Generic.List[string]
-        foreach ($secretPath in @($rawSecrets) + @($deployableSecrets)) {
-            if (-not $secrets.Contains($secretPath)) {
-                $secrets.Add($secretPath)
-            }
-        }
+        # Raw-only secrets are masked above but cannot become Bicep parameters.
+        $secrets = $deployableSecrets
 
         if ($secrets.Count -gt 0) {
             $modelResource['secrets'] = $secrets.ToArray()

@@ -18,6 +18,7 @@
     "createdTime",
     "lastModifiedDate",
     "lastModifiedTime",
+    "lastEnabledTime",
     "changedTime"
   ],
   "alwaysRemoveAtRoot": [
@@ -31,7 +32,25 @@
     "identity.principalId",
     "identity.tenantId",
     "networkProfile.resourceGuid",
-    "privateEndpointConnections"
+    "privateEndpointConnections",
+    "subnets.id",
+    "subnets.type",
+    "subnets.resourceGroup",
+    "subnets.properties.resourceGroup",
+    "subnets.properties.ipConfigurations",
+    "ipConfigurations.id",
+    "ipConfigurations.type",
+    "ipConfigurations.resourceGroup",
+    "ipConfigurations.properties.subnet.resourceGroup",
+    "networkSecurityGroup.resourceGroup",
+    "dnsSettings.appliedDnsServers",
+    "dnsSettings.internalDomainNameSuffix",
+    "routes.id",
+    "routes.type",
+    "routes.resourceGroup",
+    "securityRules.id",
+    "securityRules.type",
+    "securityRules.resourceGroup"
   ],
   "keepPaths": [
     "identity.type",
