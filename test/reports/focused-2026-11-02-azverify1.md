@@ -11,7 +11,7 @@
 | `azv-azure-to-bicep` | PASS | Fresh live and offline extraction, schema checks, generated output, complete builds, and non-deploying ARM validation succeeded. |
 | `azv-azure-to-diagram` | PASS | Both documented output paths created two-page diagrams; resource coverage, relationships, icons, edge parents, and rendered fit were checked. |
 
-No existing report was overwritten. Deliverables are in `test/artifacts/focused-20261102T0850Z-azverify1/`.
+No existing report was overwritten. Generated deliverables under `test/artifacts/focused-20261102T0850Z-azverify1/` were subsequently removed from this branch at the user's request. Artifact references below describe the verification run; the files remain available in commit `3dd972a`.
 
 ## Environment and capability checks
 
