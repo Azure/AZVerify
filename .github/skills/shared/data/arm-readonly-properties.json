@@ -38,6 +38,7 @@
     "subnets.resourceGroup",
     "subnets.properties.resourceGroup",
     "subnets.properties.ipConfigurations",
+    "subnets.properties.privateEndpoints",
     "ipConfigurations.id",
     "ipConfigurations.type",
     "ipConfigurations.resourceGroup",
