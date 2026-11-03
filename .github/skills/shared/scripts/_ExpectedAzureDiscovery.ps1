@@ -1,10 +1,47 @@
 . "$PSScriptRoot\_ResourceProjection.ps1"
 . "$PSScriptRoot\_AzureRead.ps1"
 
+function Read-ArmChildCollection {
+    [CmdletBinding()]
+    param([string]$Uri, [string]$Token, [int]$MaxRetry, [int]$TimeoutSeconds)
+
+    $initial = [uri]$Uri
+    $seen = [System.Collections.Generic.HashSet[string]]::new()
+    $resources = [System.Collections.Generic.List[object]]::new()
+    $requests = 0
+    $retries = 0
+    $errorCode = $null
+    while ($Uri) {
+        $next = [uri]::new($initial, $Uri)
+        if ($next.Scheme -ne 'https' -or $next.Authority -ne $initial.Authority -or
+            $next.AbsolutePath -ne $initial.AbsolutePath -or -not $seen.Add($next.AbsoluteUri)) {
+            $errorCode = 'InvalidCollectionNextLink'
+            break
+        }
+        $response = Invoke-ArmRead -Uri $next.AbsoluteUri -Token $Token -MaxRetry $MaxRetry -TimeoutSeconds $TimeoutSeconds
+        $requests += $response.requests
+        $retries += $response.retries
+        if ($response.status -ne 'Found') { $errorCode = $response.errorCode; break }
+        $items = Get-ModelMember $response.data 'value'
+        if ($null -eq $items) { $errorCode = 'InvalidCollectionResponse'; break }
+        foreach ($item in $items) {
+            $id = [string](Get-ModelMember $item 'id')
+            if (-not $id.StartsWith($initial.AbsolutePath + '/', [System.StringComparison]::OrdinalIgnoreCase)) {
+                $errorCode = 'UnexpectedChildResourceId'
+                break
+            }
+            $resources.Add($item)
+        }
+        if ($errorCode) { break }
+        $Uri = [string](Get-ModelMember $response.data 'nextLink')
+    }
+    return @{ resources = @($resources); errorCode = $errorCode; requests = $requests; retries = $retries }
+}
+
 function Get-ExpectedAzureModel {
     <#
     .SYNOPSIS
-    Discovers an inventory and reads only expected resources needing verification.
+    Discovers inventory, supported child collections and expected resource configuration.
     .DESCRIPTION
     Explicit drift-only path. Legacy discovery, generation fields and failure
     semantics remain in Get-AzureResourceModel.ps1's default path.
@@ -71,13 +108,15 @@ function Get-ExpectedAzureModel {
     foreach ($resource in $filtered.resources) { $actual[[string]$resource.id] = $resource }
     $work = [System.Collections.Generic.List[object]]::new()
     $issues = [System.Collections.Generic.List[object]]::new()
-    foreach ($resource in $expected.resources) {
+    $consolidated = Merge-ResourceDeclaration -Resources @($expected.resources)
+    foreach ($issue in $consolidated.issues) { $issues.Add($issue) }
+    foreach ($resource in $consolidated.resources) {
         $id = [string]$resource.id
-        if ((Test-ModelUnresolved $id) -or (Get-ModelMember $resource 'existenceUnknown')) { continue }
+        if ((Test-ResourceIdentityUnknown $resource) -or (Get-ModelMember $resource 'existenceUnknown')) { continue }
         $properties = Get-ComparisonProperty -Resource $resource -Configuration $config
         if ($actual.ContainsKey($id)) {
             $projected = Get-TrackedProperty -Resource $rawIndex[$id] -Configuration $config -PropertyName @($properties.Keys)
-            $actual[$id] | Add-Member -NotePropertyName comparisonProperties -NotePropertyValue $projected
+            $actual[$id] | Add-Member -NotePropertyName comparisonProperties -NotePropertyValue $projected -Force
             $missing = @($properties.Keys | Where-Object { Test-ModelUnresolved $projected[$_] })
             if ($missing.Count -eq 0) { continue }
         }
@@ -97,15 +136,46 @@ function Get-ExpectedAzureModel {
     $requests = 1
     $retries = 0
     $results = @()
-    if ($work.Count -gt 0) {
+    $collections = @(foreach ($parent in $filtered.resources) {
+        foreach ($rule in $config.childCollections) {
+            if ($parent.type -eq $rule.parentType) {
+                @{ parent = $parent; rule = $rule }
+            }
+        }
+    })
+    if ($work.Count -gt 0 -or $collections.Count -gt 0) {
         $tokenDocument = Invoke-AzJson -Arguments @('account', 'get-access-token', '--subscription', $SubscriptionId, '--resource', $ManagementEndpoint, '--output', 'json')
         $token = [string]$tokenDocument.accessToken
         if (-not $token) { throw 'Azure CLI did not return an ARM access token.' }
         $endpoint = $ManagementEndpoint.TrimEnd('/')
         $helperPath = Join-Path $PSScriptRoot '_AzureRead.ps1'
         try {
+            foreach ($collection in $collections) {
+                $uri = '{0}{1}/{2}?api-version={3}' -f $endpoint, $collection.parent.id, $collection.rule.collection, $collection.rule.apiVersion
+                $children = Read-ArmChildCollection -Uri $uri -Token $token -MaxRetry $MaxRetry -TimeoutSeconds $TimeoutSeconds
+                $requests += $children.requests
+                $retries += $children.retries
+                if ($children.errorCode) {
+                    $issues.Add(@{ resourceId = $collection.parent.id; collection = $collection.rule.collection; errorCode = $children.errorCode })
+                }
+                foreach ($child in $children.resources) {
+                    $childType = "$($collection.parent.type)/$($collection.rule.collection)"
+                    $actual[[string]$child.id] = [pscustomobject]@{
+                        id = $child.id; type = $childType; name = $child.name
+                        apiVersion = $collection.rule.apiVersion
+                        resourceGroup = Get-ModelMember $collection.parent 'resourceGroup'
+                        properties = $child.properties; tags = @{}; relationships = @(); existence = 'Found'
+                        comparisonProperties = Get-TrackedProperty -Resource $child -Configuration $config
+                    }
+                }
+            }
+            $pending = @($work | Where-Object {
+                if (-not $actual.ContainsKey($_.id)) { return $true }
+                $projection = Get-ComparisonProperty -Resource $actual[$_.id] -Configuration $config -PropertyName $_.properties
+                return @($projection.Values | Where-Object { Test-ModelUnresolved $_ }).Count -gt 0
+            })
             if ($PSVersionTable.PSVersion.Major -ge 7 -and $ThrottleLimit -gt 1) {
-                $results = @($work | ForEach-Object -Parallel {
+                $results = @($pending | ForEach-Object -Parallel {
                     . $using:helperPath
                     $item = $_
                     $response = Invoke-ArmRead -Uri ("{0}{1}?api-version={2}" -f $using:endpoint, $item.id, $item.apiVersion) `
@@ -114,7 +184,7 @@ function Get-ExpectedAzureModel {
                 } -ThrottleLimit $ThrottleLimit)
             }
             else {
-                $results = @(foreach ($item in $work) {
+                $results = @(foreach ($item in $pending) {
                     [pscustomobject]@{ item = $item; response = (Invoke-ArmRead -Uri ("{0}{1}?api-version={2}" -f $endpoint, $item.id, $item.apiVersion) `
                         -Token $token -MaxRetry $MaxRetry -TimeoutSeconds $TimeoutSeconds) }
                 })
@@ -171,16 +241,21 @@ function Get-ExpectedAzureModel {
                 $actual[$item.id] | Add-Member -NotePropertyName discoveryStatus -NotePropertyValue $response.status -Force
                 if ($response.status -eq 'Found') {
                     $actual[$item.id] | Add-Member -NotePropertyName existence -NotePropertyValue 'Found' -Force
+                    foreach ($field in @('properties', 'tags', 'sku', 'location', 'kind', 'zones', 'identity')) {
+                        if (Test-ModelPath $response.data $field) {
+                            $actual[$item.id] | Add-Member -NotePropertyName $field -NotePropertyValue (Get-ModelMember $response.data $field) -Force
+                        }
+                    }
                 }
             }
         }
         finally { $token = $null; $tokenDocument = $null }
     }
     $timer.Stop()
-    Write-Diag ("Discovered {0}; retained {1}; detail checks {2}; unavailable {3}." -f $inventory.Count, $actual.Count, $work.Count, $issues.Count)
+    Write-Diag ("Discovered {0}; retained {1}; detail checks {2}; unavailable {3}." -f $inventory.Count, $actual.Count, $results.Count, $issues.Count)
     return @{
         resources = @($actual.Values)
         issues = @($issues)
-        metrics = @{ inventoryRequests = 1; armRequests = $requests; retries = $retries; detailChecks = $work.Count; elapsedMilliseconds = $timer.ElapsedMilliseconds; throttleLimit = $ThrottleLimit }
+        metrics = @{ inventoryRequests = 1; armRequests = $requests; retries = $retries; detailChecks = $results.Count; childCollections = $collections.Count; elapsedMilliseconds = $timer.ElapsedMilliseconds; throttleLimit = $ThrottleLimit }
     }
 }

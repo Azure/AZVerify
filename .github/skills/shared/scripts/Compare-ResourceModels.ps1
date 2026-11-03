@@ -247,20 +247,22 @@ function Test-NormalizedEquality {
         $Right,
 
         [ValidateSet('exact', 'caseInsensitive', 'region')]
-        [string]$Normalization = 'exact'
+        [string]$Normalization = 'exact',
+
+        [string]$Path = ''
     )
 
     if ($Left -is [string] -and $Right -is [string]) {
+        if ($Left -match '^/(subscriptions|providers|tenants)/' -and $Right -match '^/(subscriptions|providers|tenants)/') {
+            return [string]::Equals($Left, $Right, [System.StringComparison]::OrdinalIgnoreCase)
+        }
         switch ($Normalization) {
             'caseInsensitive' { return [string]::Equals($Left, $Right, [System.StringComparison]::OrdinalIgnoreCase) }
             'region' { return [string]::Equals(($Left -replace '\s', ''), ($Right -replace '\s', ''), [System.StringComparison]::OrdinalIgnoreCase) }
             default { return [string]::Equals($Left, $Right, [System.StringComparison]::Ordinal) }
         }
     }
-    # Keep legacy empty-collection equivalence, without normalizing string values.
-    $leftEmpty = Test-EmptyValue -Value $Left
-    $rightEmpty = Test-EmptyValue -Value $Right
-    if ($leftEmpty -or $rightEmpty) { return ($leftEmpty -and $rightEmpty) }
+    if ($null -eq $Left -or $null -eq $Right) { return $null -eq $Left -and $null -eq $Right }
 
     $leftIsObject = ($Left -is [System.Collections.IDictionary]) -or ($Left -is [System.Management.Automation.PSCustomObject])
     $rightIsObject = ($Right -is [System.Collections.IDictionary]) -or ($Right -is [System.Management.Automation.PSCustomObject])
@@ -271,7 +273,7 @@ function Test-NormalizedEquality {
         $rightMap = ConvertTo-PropertyMap -Properties $Right
         foreach ($key in $leftMap.Keys) {
             if (-not $rightMap.ContainsKey($key)) { return $false }
-            if (-not (Test-NormalizedEquality -Left $leftMap[$key] -Right $rightMap[$key])) { return $false }
+            if (-not (Test-NormalizedEquality -Left $leftMap[$key] -Right $rightMap[$key] -Path "$Path.$key")) { return $false }
         }
 
         return $true
@@ -284,9 +286,32 @@ function Test-NormalizedEquality {
 
         $leftItems = @($Left)
         $rightItems = @($Right)
+        $collectionKey = @($propertyConfig.propertySemantics | Where-Object { $Path -like $_.path })
+        if ($collectionKey.Count -eq 1) {
+            if ($Path -match '\.(logs|metrics)$') {
+                $leftItems = @($leftItems | Where-Object { (Get-ModelMember $_ 'enabled') -ne $false })
+                $rightItems = @($rightItems | Where-Object { (Get-ModelMember $_ 'enabled') -ne $false })
+            }
+            if ($leftItems.Count -ne $rightItems.Count) { return $false }
+            $remaining = [System.Collections.Generic.List[object]]::new()
+            foreach ($item in $rightItems) { $remaining.Add($item) }
+            foreach ($item in $leftItems) {
+                $found = -1
+                for ($i = 0; $i -lt $remaining.Count; $i++) {
+                    $sameKey = $true
+                    foreach ($key in $collectionKey[0].collectionKey -split ',') {
+                        if (-not (Test-NormalizedEquality (Get-ModelMember $item $key) (Get-ModelMember $remaining[$i] $key))) { $sameKey = $false; break }
+                    }
+                    if ($sameKey -and (Test-NormalizedEquality $item $remaining[$i] -Path "$Path[]")) { $found = $i; break }
+                }
+                if ($found -lt 0) { return $false }
+                $remaining.RemoveAt($found)
+            }
+            return $true
+        }
         if ($leftItems.Count -ne $rightItems.Count) { return $false }
         for ($i = 0; $i -lt $leftItems.Count; $i++) {
-            if (-not (Test-NormalizedEquality -Left $leftItems[$i] -Right $rightItems[$i])) { return $false }
+            if (-not (Test-NormalizedEquality -Left $leftItems[$i] -Right $rightItems[$i] -Path "$Path[]")) { return $false }
         }
 
         return $true
@@ -388,6 +413,12 @@ try {
     }
     $resourcesA = if ($baseA.resources) { @($baseA.resources) } else { @() }
     $resourcesB = if ($baseB.resources) { @($baseB.resources) } else { @() }
+    $templateIssues = @()
+    if ($AzureIdentity) {
+        $consolidated = Merge-ResourceDeclaration -Resources $resourcesA
+        $resourcesA = $consolidated.resources
+        $templateIssues = @($consolidated.issues)
+    }
 
     $recordsA = @($resourcesA | ForEach-Object { New-ResourceRecord -Resource $_ })
     $recordsB = @($resourcesB | ForEach-Object { New-ResourceRecord -Resource $_ })
@@ -407,7 +438,7 @@ try {
         }
         foreach ($ra in $recordsA) {
             $id = [string](Get-ModelMember $ra.Resource 'id')
-            if (Test-ModelUnresolved $id) { continue }
+            if (Test-ResourceIdentityUnknown $ra.Resource) { continue }
             if ($identityIndex.ContainsKey($id)) {
                 $rb = $identityIndex[$id]
                 if ($matchedB.Contains($rb)) { throw "Duplicate expected resource ID: $id" }
@@ -504,7 +535,7 @@ try {
     # Final unmatched resources.
     foreach ($ra in $recordsA) {
         if ($matchedA.Contains($ra)) { continue }
-        $uncertain = $AzureIdentity -and ((Test-ModelUnresolved (Get-ModelMember $ra.Resource 'id')) -or (Get-ModelMember $ra.Resource 'existenceUnknown'))
+        $uncertain = $AzureIdentity -and ((Test-ResourceIdentityUnknown $ra.Resource) -or (Get-ModelMember $ra.Resource 'existenceUnknown'))
         $comparisonMatches.Add(@{ status = if ($uncertain) { 'Unresolved' } else { "$LabelA Only" }; existence = if ($uncertain) { 'Unknown' } else { 'Absent' }; resourceA = $ra.Resource; resourceB = $null; note = if ($uncertain) { 'Expected identity or existence cannot be resolved' } else { 'Present only in first model' } })
     }
 
@@ -546,7 +577,7 @@ try {
                 }
                 $comparedCount++
                 $normalization = Get-PropertyNormalization -Configuration $propertyConfig -ResourceType $entry.resourceA.type -PropertyName $propertyName
-                if (-not (Test-NormalizedEquality -Left $valueA -Right $valueB -Normalization $normalization)) {
+                if (-not (Test-NormalizedEquality -Left $valueA -Right $valueB -Normalization $normalization -Path $propertyName)) {
                     $drifts.Add(@{
                         property = $propertyName
                         valueA   = $valueA
@@ -582,6 +613,21 @@ try {
                 }
             }
             $entry.propertyComparison.uncertainties = @($uncertainties)
+            $actualConfiguration = Get-TrackedProperty -Resource $entry.resourceB -Configuration $propertyConfig
+            $entry.propertyComparison.omittedConfiguration = @(
+                foreach ($name in $actualConfiguration.Keys) {
+                    if (-not $mapA.ContainsKey($name) -and -not (Test-ModelUnresolved $actualConfiguration[$name])) {
+                        @{ property = $name; valueB = $actualConfiguration[$name]; interpretation = 'Not declared in this template; may be a provider default, read-only state, or owned by another deployment. Not confirmed drift.' }
+                    }
+                }
+            )
+            $entry.propertyComparison.providerMaintained = @(
+                foreach ($path in @('etag', 'properties.provisioningState', 'properties.resourceGuid', 'properties.peeringState', 'properties.peeringSyncLevel')) {
+                    if (Test-ModelPath $entry.resourceB $path) {
+                        @{ property = $path; valueB = Get-ModelPath $entry.resourceB $path; interpretation = 'Provider-maintained state; not deployable intent' }
+                    }
+                }
+            )
             $sources = Get-ModelMember $entry.resourceA 'propertySources'
             if ($null -ne $sources) { $entry.propertyComparison.propertySources = $sources }
         }
@@ -632,6 +678,7 @@ try {
         labelB  = $LabelB
         summary = $summary
         matches = @($comparisonMatches)
+        templateIssues = $templateIssues
     }
 
     Write-ResourceModel -Model $report -OutFile $OutFile

@@ -102,6 +102,9 @@ function Invoke-WebRequest {
         'throttled' {
             Throw-MockHttpError -StatusCode 429 -Body '{"error":{"code":"TooManyRequests"}}'
         }
+        'transport' {
+            throw [System.InvalidOperationException]::new('Mock failure without an HTTP Response property.')
+        }
         default { throw "Unknown mock scenario '$script:mockScenario'." }
     }
 }
@@ -137,7 +140,8 @@ try {
         @{ Scenario = 'found'; Status = 'Found' },
         @{ Scenario = 'not-found'; Status = 'Absent' },
         @{ Scenario = 'forbidden'; Status = 'Unavailable' },
-        @{ Scenario = 'throttled'; Status = 'Unavailable' }
+        @{ Scenario = 'throttled'; Status = 'Unavailable' },
+        @{ Scenario = 'transport'; Status = 'Unavailable' }
     )
     foreach ($case in $cases) {
         Reset-MockRequests

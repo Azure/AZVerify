@@ -23,7 +23,7 @@ pwsh .github/skills/shared/scripts/Compare-ResourceModels.ps1 -ModelA <model-a.j
 - `-LabelB` — optional label for model B (defaults to `ModelB`)
 - `-CompareProperties` — optional switch enabling property-level comparison of matched resources (deep mode). Model A is the **expected** state; model B is the **actual** state
 - `-AzureIdentity` — exact full ARM-ID matching; no heuristic matching. Use for Bicep versus Azure, not diagrams.
-- `-TrackedProperties` — canonical projection from `azure-property-paths.json`, including top-level SKU and location. Uses `comparisonProperties` when already projected.
+- `-TrackedProperties` — canonical projection from `azure-property-paths.json`, including top-level fields. Uses `comparisonProperties` when already projected; the catalog is not a ceiling on comparison.
 - For compatibility, `-CompareProperties` with an Azure label enables canonical tracked projection; a Bicep/Azure pair also enables exact ARM-ID matching. Both Azure paths therefore use the same algorithm.
 - `-OutFile` — optional output path; otherwise JSON is written to stdout
 
@@ -51,9 +51,9 @@ With `-CompareProperties`, each matched entry (`In Sync` / `In Sync (name differ
 }
 ```
 
-and the summary gains `resourcesWithPropertyDrift`, `propertyDriftCount`, `confirmedMatch`, `incompleteComparison`, `noComparableProperties`, and `unverified` counts. Each unverified resource is counted once, not once per property/read issue. `propertyComparison.uncertainties` records unavailable/unresolved values; `propertyComparison.coverage` reports how many configured tracked properties have explicit expectations and lists those not specified. Diagram `propertySources` preserves annotation/baseline provenance.
+and the summary gains `resourcesWithPropertyDrift`, `propertyDriftCount`, `confirmedMatch`, `incompleteComparison`, `noComparableProperties`, and `unverified` counts. Each unverified resource is counted once, not once per property/read issue. `propertyComparison.uncertainties` records unavailable/unresolved values; an `identityUnknown` classification is **Unverified**, never a confirmed difference or match. Coverage reports explicit catalog expectations and separately records explicit template leaves outside the catalog. Preserve `diagnostics.parameters` and `diagnostics.parameterScopes` from parsing, and input provenance for parameter-derived expectations.
 
-Existence is independent of configuration: `Found` means inventory or a GET confirmed the resource, `Absent` requires confirmed absence, and `Unknown` means it could not be verified. An actual entry with unknown existence matches as `Unverified`, never `In Sync`. `All Properties Match` is the only configuration result that permits “No Change.” `Incomplete` takes precedence over confirmed drift for category counting; confirmed drifts remain in its details. `No Comparable Properties` is existence-only, not a configuration check.
+Existence is independent of configuration: `Found` means inventory or a GET confirmed the resource, `Absent` requires confirmed absence, and `Unknown` means it could not be verified. An actual entry with unknown existence or identity matches as `Unverified`, never `In Sync`. `All Properties Match` is the only configuration result that permits “No Change.” `Incomplete` takes precedence over confirmed drift for category counting; confirmed drifts remain in its details. `No Comparable Properties` is existence-only, not a configuration check. Keep provider-maintained observations (including peering and provisioning status) in a separate `providerMaintained` collection, not in configuration drift counts/tables.
 
 ## Exit Codes
 
@@ -63,16 +63,17 @@ Existence is independent of configuration: `Found` means inventory or a GET conf
 ## Notes
 
 - Diagram matching applies exact match, single-of-type match, substring/Levenshtein matching and child-resource context. Azure identity matching never uses these heuristics.
-- Deep comparison coverage is **Incomplete** when any configured tracked property lacks an explicit expectation (including when none are specified), and **Complete** only when every tracked property has an expectation. **Not Applicable** means the resource type has no tracked-property configuration. Unspecified properties are not drift.
-- **Property comparison semantics** (`-CompareProperties`): every property in a matched model-A resource is compared against the model-B value (keys only present in B are ignored — the expected model did not specify them; `parentId` and `containerName` are excluded as matching aids). Values are normalized before comparing:
+- Deep comparison coverage is **Incomplete** when any configured tracked property lacks an explicit expectation (including when none are specified), and **Complete** only when every tracked property has an expectation. **Not Applicable** means the resource type has no tracked-property configuration; explicit comparable leaf properties beyond the catalog still count as comparable. Return **No Comparable Properties** only when neither catalog expectations nor any other explicit comparable leaves can be assessed. Unspecified properties are not confirmed drift.
+- The catalog defines known comparable paths, severity, and property-specific normalization; it is not an exhaustive allowlist. Conservatively compare explicit expected leaf properties beyond the catalog when the actual leaf can be read, including `properties`, `tags`, top-level `sku`, `kind`, `zones`, and `identity`. Do not infer values for omitted expected properties. Exclude provider-maintained `peeringState` and `peeringSyncLevel` from drift comparison.
+- Distinguish confirmed differences from omitted expected properties, values that exist only because of defaults, read-only/provider-maintained values, and unresolved/unavailable inputs. Actual-only keys are omissions, not differences. Report them separately when useful; do not silently treat omission as a match or infer the template's intent. Keep provider-maintained observations such as `peeringState`, `peeringSyncLevel`, and provisioning status separate from both drift and user-configurable expectations.
+- **Property comparison semantics** (`-CompareProperties`): compare each explicit expected leaf against the corresponding actual leaf. `parentId` and `containerName` are excluded as matching aids. A missing leaf is distinct from an explicit `null`; null, absent, empty, and default values are not universally equivalent. Values are normalized before comparing only under explicit metadata rules:
   - Exact ordinal strings by default, including case and whitespace in usernames and other free text
-  - Case-insensitive strings only where property metadata declares `normalization: "caseInsensitive"` (SKU names/tiers and selected enums)
-  - Boolean coercion: `true`/`"true"`/`"True"` are equal
-  - Empty-collection equivalence: `[]`, `{}`, `null`, `""`, and absent are all equal
-  - Numeric strings: `"30"` equals `30`
-  - Region names: `"West Europe"` equals `"westeurope"` only for fields declaring `normalization: "region"`; there is no general whitespace fallback
-  - Arrays compare element-wise in order; expected object members compare recursively, ignoring additional actual members that Azure defaults/returns. Nested string values remain exact.
-  - Two strings are never coerced to booleans/numbers; typed booleans/numbers can compare to their serialized scalar equivalents.
+  - Case-insensitive comparison only where metadata declares it (selected enums/SKU fields); canonical resource-ID comparison only for ID fields
+  - Boolean or numeric coercion only where the data representation is known to be a serialization of that same scalar type
+  - Region normalization only for fields declaring region semantics; no general whitespace fallback
+  - Arrays preserve order by default. Keyed-set comparison is permitted only where metadata declares the key and set semantics; current keyed sets include diagnostic logs/metrics, DNS configurations, storage ACL rules, and peerings. Use their keys to match entries before comparing entry values.
+  - Expected object members compare recursively. Additional actual members are omissions/extra configuration, not matches for absent expected members and not automatically property differences.
+  - Explicit `null` compares only with explicit `null`; it is not interchangeable with missing, empty, or default values without a specific metadata rule.
 - Severity per drifted property comes from `.github/skills/shared/data/azure-property-paths.json`: per-property `severity` when declared, otherwise the resource-type `severity`, otherwise `standard`.
 - If `pwsh`/`powershell.exe` or the script is unavailable, use the inline fallback below.
 
@@ -80,7 +81,7 @@ Existence is independent of configuration: `Found` means inventory or a GET conf
 
 If `pwsh`/`powershell.exe` or the script cannot run, compare the two model JSONs directly using these ordered passes:
 
-For **Bicep versus Azure**, instead match exact full ARM IDs, project both sides using `azure-property-paths.json` (including top-level fields), preserve unknown existence/values, and apply the same incomplete/no-comparable/confirmed-match categories above. Never substitute heuristic matching or configuration defaults.
+For **Bicep versus Azure**, match exact full ARM IDs, project known catalog fields and retain explicit expected leaf fields outside the catalog, preserve unknown existence/values and parameter provenance, and apply the same incomplete/no-comparable/confirmed-match categories above. Never substitute heuristic matching or configuration defaults. Compare keyed sets only where metadata explicitly declares their keyed semantics. Keep Azure-only resources, confirmed differences, omissions/defaults/read-only values, and unresolved/inventory-incomplete items as distinct report groups.
 
 For **diagram matching**:
 

@@ -1,5 +1,27 @@
 {
   "version": 1,
+  "childCollections": [
+    {
+      "parentType": "Microsoft.Insights/privateLinkScopes",
+      "collection": "scopedResources",
+      "apiVersion": "2021-07-01-preview"
+    }
+  ],
+  "propertySemantics": [
+    { "path": "*.logs", "collectionKey": "category,categoryGroup" },
+    { "path": "*.metrics", "collectionKey": "category" },
+    { "path": "*.privateDnsZoneConfigs", "collectionKey": "name" },
+    { "path": "*.ipRules", "collectionKey": "value" },
+    { "path": "*.virtualNetworkRules", "collectionKey": "id" },
+    { "path": "*.resourceAccessRules", "collectionKey": "resourceId,tenantId" },
+    { "path": "*.virtualNetworkPeerings", "collectionKey": "name" },
+    { "path": "*.aRecords", "collectionKey": "ipv4Address" },
+    { "path": "*.aaaaRecords", "collectionKey": "ipv6Address" },
+    { "path": "*.mxRecords", "collectionKey": "preference,exchange" },
+    { "path": "*.srvRecords", "collectionKey": "priority,weight,port,target" },
+    { "path": "*.ptrRecords", "collectionKey": "ptrdname" },
+    { "path": "*.txtRecords", "collectionKey": "value" }
+  ],
   "source": "shared/azure-resource-configs.md",
   "globalSkuRules": [
     {
@@ -37,6 +59,50 @@
     }
   ],
   "resourceTypes": [
+    {
+      "resourceType": "Microsoft.Insights/privateLinkScopes/scopedResources",
+      "severity": "standard",
+      "properties": [
+        { "name": "linkedResourceId", "armJsonPath": "properties.linkedResourceId", "normalization": "caseInsensitive" }
+      ]
+    },
+    {
+      "resourceType": "Microsoft.Insights/diagnosticSettings",
+      "severity": "standard",
+      "properties": [
+        { "name": "workspaceId", "armJsonPath": "properties.workspaceId", "normalization": "caseInsensitive" },
+        { "name": "storageAccountId", "armJsonPath": "properties.storageAccountId", "normalization": "caseInsensitive" },
+        { "name": "eventHubAuthorizationRuleId", "armJsonPath": "properties.eventHubAuthorizationRuleId", "normalization": "caseInsensitive" }
+      ]
+    },
+    {
+      "resourceType": "Microsoft.Network/privateEndpoints/privateDnsZoneGroups",
+      "severity": "standard",
+      "properties": []
+    },
+    {
+      "resourceType": "Microsoft.Network/virtualNetworks/virtualNetworkPeerings",
+      "severity": "standard",
+      "properties": [
+        { "name": "allowVirtualNetworkAccess", "armJsonPath": "properties.allowVirtualNetworkAccess" },
+        { "name": "allowForwardedTraffic", "armJsonPath": "properties.allowForwardedTraffic" },
+        { "name": "allowGatewayTransit", "armJsonPath": "properties.allowGatewayTransit" },
+        { "name": "useRemoteGateways", "armJsonPath": "properties.useRemoteGateways" },
+        { "name": "remoteVirtualNetworkId", "armJsonPath": "properties.remoteVirtualNetwork.id", "normalization": "caseInsensitive" }
+      ]
+    },
+    {
+      "resourceType": "Microsoft.Storage/storageAccounts/blobServices",
+      "severity": "standard",
+      "properties": []
+    },
+    {
+      "resourceType": "Microsoft.Storage/storageAccounts/blobServices/containers",
+      "severity": "standard",
+      "properties": [
+        { "name": "publicAccess", "armJsonPath": "properties.publicAccess", "normalization": "caseInsensitive" }
+      ]
+    },
     {
       "resourceType": "Microsoft.Compute/virtualMachines",
       "mcpTool": "mcp_azure_compute",

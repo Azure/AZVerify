@@ -6,7 +6,7 @@ These PowerShell scripts provide the reusable implementation behind AzVerify ski
 
 
 - **PowerShell 7 (`pwsh`)** is preferred; **Windows PowerShell 5.1 (`powershell.exe`)** is also supported
-- **Azure CLI (`az`)** or **Az PowerShell module** for Azure-backed scripts (either is sufficient; `Test-AzureAuth.ps1` probes Az PowerShell first and falls back to Azure CLI)
+- **Azure CLI (`az`)** is required for expected-aware Bicep drift detection (`-ExpectedModel`); the legacy discovery path accepts either Azure CLI or the Az PowerShell module
 - **Bicep CLI support** via `az bicep` or standalone `bicep` for Bicep parsing/build flows
 
 If a script cannot run because a prerequisite is missing, the calling skill follows the inline fallback in the matching `procedures/` contract (or the Azure MCP fallback for authentication and discovery) instead of stopping.
@@ -24,7 +24,10 @@ If a script cannot run because a prerequisite is missing, the calling skill foll
 | `Get-AzureResourceModel.ps1` | Builds a resource model from live Azure or captured `az resource list` JSON. | `pwsh .github/skills/shared/scripts/Get-AzureResourceModel.ps1 -ResourceGroup <rg> [-Enrich] [-StripReadOnly]` | Supports offline mode with `-FromJson`; can enrich properties using `data/azure-property-paths.json`. `-StripReadOnly` removes read-only properties and flags secrets using `data/arm-readonly-properties.json`. |
 | `Invoke-Fixtures.ps1` | Runs smoke tests across example fixtures. | `pwsh .github/skills/shared/scripts/Invoke-Fixtures.ps1` | Validates parser/filter/compare flows across `examples/`. |
 
-Opt-in options (defaults unchanged for other skills): `ConvertFrom-BicepTemplate.ps1` accepts ARM JSON parameter files, `-ParameterOverride`, `-SubscriptionId/-ResourceGroup/-Location`, `-ResolveDeterministicNames` (offline `uniqueString`/`guid`) and `-MaskSecrets`; `Get-AzureResourceModel.ps1 -ExpectedModel` does expected-aware discovery; `Compare-ResourceModels.ps1 -AzureIdentity -TrackedProperties` does exact-ID matching and tracked-property comparison; `Test-AzureAuth.ps1 -Backend/-SubscriptionId` pins the probe. These are used by `azv-bicep-drift-detection/scripts/Invoke-BicepDriftDetection.ps1`.
+Opt-in options: `ConvertFrom-BicepTemplate.ps1` accepts ARM JSON/JSONC parameter files, `-ParameterOverride`, `-SubscriptionId/-ResourceGroup/-Location`, `-ResolveDeterministicNames` (offline `uniqueString`/`guid`), `-AnalysisTimestamp` and `-MaskSecrets`.
+`Get-AzureResourceModel.ps1 -ExpectedModel` discovers inventory, paginated AMPLS children and expected configuration. `Compare-ResourceModels.ps1 -AzureIdentity -TrackedProperties` compares exact IDs, catalog properties and explicit configuration beyond the catalog, consolidating compatible duplicate declarations and flagging conflicts. Unknown values and failed collection reads remain unverified.
+These options are used by `azv-bicep-drift-detection/scripts/Invoke-BicepDriftDetection.ps1`, which also records pipeline/input provenance, deployment mode and build-version uncertainty. Detection is read-only and never invokes what-if.
+Run `tests/Test-BicepDriftLessons.ps1`, `tests/Test-AzureDriftPipeline.ps1` and `tests/Test-ArmExpression.ps1` for the offline regression scenarios; the fixture runner includes all three.
 
 ## Recommended usage pattern in skills
 

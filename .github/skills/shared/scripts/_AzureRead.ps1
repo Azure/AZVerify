@@ -42,7 +42,7 @@ function Invoke-ArmRead {
             return [pscustomobject]@{ status = 'Found'; data = $data; errorCode = $null; requests = $attempt + 1; retries = $attempt }
         }
         catch {
-            if ($_.Exception.Response) {
+            if ($_.Exception.PSObject.Properties['Response'] -and $_.Exception.Response) {
                 $statusCode = [int]$_.Exception.Response.StatusCode
                 $retryAfter = $_.Exception.Response.Headers['Retry-After']
                 if ($retryAfter) {

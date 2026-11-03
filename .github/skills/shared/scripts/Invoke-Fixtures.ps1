@@ -233,6 +233,8 @@ $regressionTests = @(
     (Join-Path $scriptRoot 'tests/Test-ConvertFromDrawioDiagram.ps1'),
     (Join-Path $repoRoot 'tests/Test-ArmCaseAndModuleNames.ps1'),
     (Join-Path $repoRoot 'tests/Test-AzureDriftPipeline.ps1')
+    (Join-Path $repoRoot 'tests/Test-BicepDriftLessons.ps1')
+    (Join-Path $repoRoot 'tests/Test-ArmExpression.ps1')
 )
 foreach ($testFile in $regressionTests) {
     try {
