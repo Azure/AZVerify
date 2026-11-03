@@ -137,6 +137,64 @@ class ArmExpressionParser {
 
 $script:ArmAstCache = [System.Collections.Generic.Dictionary[string,object]]::new([System.StringComparer]::Ordinal)
 
+function ConvertFrom-ArmJson {
+    # Strip comments without touching URLs, escaped quotes or comment-like string contents (PS 5.1).
+    param([string]$Text)
+
+    $pattern = '"(?:\\.|[^"\\])*"|//[^\r\n]*|/\*[\s\S]*?\*/'
+    $json = [regex]::Replace($Text, $pattern, [System.Text.RegularExpressions.MatchEvaluator]{
+        param($match)
+        if ($match.Value.StartsWith('"')) { return $match.Value }
+        return [regex]::Replace($match.Value, '[^\r\n]', ' ')
+    })
+    # A wrapper prevents ConvertFrom-Json from unrolling a root singleton/empty array.
+    $document = ConvertFrom-Json -InputObject ('{"value":' + $json + '}')
+    $result = ConvertTo-ArmObject $document.value
+    , $result
+}
+
+function ConvertTo-ArmParameterValue {
+    # Parameter file and pipeline strings are literals, not ARM expressions.
+    param($Value, [string]$Name)
+
+    if ($Value -is [string] -and $Value -match '\$\([^)]+\)') {
+        return [ArmUnresolved]::new("unexpanded pipeline macro in parameter $Name")
+    }
+    if ($Value -is [System.Collections.IDictionary]) {
+        $result = [ordered]@{}
+        foreach ($key in $Value.Keys) { $result[$key] = ConvertTo-ArmParameterValue $Value[$key] $Name }
+        return , $result
+    }
+    if (Test-ArmList $Value) {
+        $items = New-Object System.Collections.Generic.List[object]
+        foreach ($item in $Value) { $items.Add((ConvertTo-ArmParameterValue $item $Name)) }
+        return , $items.ToArray()
+    }
+    , $Value
+}
+
+function Get-ArmUncertainty {
+    param($Value)
+
+    if ($Value -is [ArmUnresolved]) { return $Value.Reason }
+    if ($Value -is [string] -and ($Value -match '<unresolved:' -or $Value -match '\$\([^)]+\)')) {
+        return 'unresolved value'
+    }
+    if ($Value -is [System.Collections.IDictionary]) {
+        foreach ($key in $Value.Keys) {
+            $reason = Get-ArmUncertainty $Value[$key]
+            if ($null -ne $reason) { return $reason }
+        }
+    }
+    elseif (Test-ArmList $Value) {
+        foreach ($item in $Value) {
+            $reason = Get-ArmUncertainty $item
+            if ($null -ne $reason) { return $reason }
+        }
+    }
+    $null
+}
+
 function Get-ArmExpressionAst {
     param([string]$Expression)
 
@@ -336,18 +394,21 @@ function Get-ArmSymbolTable {
 function New-ArmScope {
     param(
         $Template,
-        [string]$SubscriptionId,
-        [string]$ResourceGroupName,
+        $SubscriptionId,
+        $ResourceGroupName,
         $Location,
         [string]$Path,
-        [string]$DeploymentName,
-        [string]$SourceFile
+        $DeploymentName,
+        [string]$SourceFile,
+        [DateTimeOffset]$AnalysisTimestamp = [DateTimeOffset]::UtcNow
     )
 
     $variables = if ($Template.Contains('variables') -and $Template['variables'] -is [System.Collections.IDictionary]) { $Template['variables'] } else { [ordered]@{} }
     $scope = @{
         Template          = $Template
         Params            = @{}
+        ParameterMetadata = @{}
+        ParameterScopes   = @{}
         Vars              = $variables
         VarCache          = @{}
         DeploymentOutputCache = @{}
@@ -365,6 +426,9 @@ function New-ArmScope {
         NamingValues      = @{}
         NamingRequests    = @{}
         ResolveDeterministicNames = $false
+        AnalysisTimestamp = $AnalysisTimestamp.ToUniversalTime()
+        EvaluatingParameterDefault = $false
+        UseAnalysisTimestamp = $false
     }
     $scope.Root = $scope
     $scope
@@ -372,7 +436,7 @@ function New-ArmScope {
 
 function Set-ArmScopeParameters {
     # Supplied values win; defaults are evaluated afterwards because they may reference other parameters.
-    param([hashtable]$Scope, [System.Collections.IDictionary]$Supplied)
+    param([hashtable]$Scope, [System.Collections.IDictionary]$Supplied, [System.Collections.IDictionary]$Sources = @{})
 
     $template = $Scope.Template
     if (-not $template.Contains('parameters') -or $null -eq $template['parameters']) { return }
@@ -381,23 +445,57 @@ function Set-ArmScopeParameters {
     foreach ($name in $template['parameters'].Keys) {
         $definition = $template['parameters'][$name]
         $suppliedKey = Find-ArmKey $Supplied $name
+        $source = 'missing'
         if ($null -ne $suppliedKey) {
-            $Scope.Params[$name] = $Supplied[$suppliedKey]
+            $Scope.Params[$name] = ConvertTo-ArmParameterValue (ConvertTo-ArmObject $Supplied[$suppliedKey]) $name
+            $sourceKey = Find-ArmKey $Sources $name
+            $source = if ($null -ne $sourceKey) { [string]$Sources[$sourceKey] } else { 'supplied' }
         }
         elseif ($definition -is [System.Collections.IDictionary] -and $definition.Contains('defaultValue')) {
             $pending.Add($name)
+            $source = 'templateDefault'
         }
         elseif ($definition -is [System.Collections.IDictionary] -and $definition.Contains('nullable') -and $definition['nullable']) {
             $Scope.Params[$name] = $null
+            $source = 'nullableDefault'
         }
         else {
             $Scope.Params[$name] = [ArmUnresolved]::new("parameter $name has no value")
         }
+        $Scope.ParameterMetadata[$name] = [ordered]@{
+            name = $name; source = $source; status = 'Verified'; isSynthetic = $false; reason = $null
+        }
     }
 
+    # Analysis values are explanatory only. The effective model keeps deployment-time
+    # defaults unresolved so synthetic timestamps cannot verify names, scopes or conditions.
+    $analysisScope = Copy-ArmScope $Scope
+    $analysisScope.Params = $Scope.Params.Clone()
+    $analysisScope.UseAnalysisTimestamp = $true
+    $analysisScope.EvaluatingParameterDefault = $true
     foreach ($name in $pending) {
-        $Scope.Params[$name] = Resolve-ArmValue $template['parameters'][$name]['defaultValue'] $Scope
+        $defaultScope = Copy-ArmScope $Scope
+        $defaultScope.EvaluatingParameterDefault = $true
+        $Scope.Params[$name] = ConvertTo-ArmParameterValue (Resolve-ArmValue $template['parameters'][$name]['defaultValue'] $defaultScope) $name
+        $analysisScope.Params[$name] = Resolve-ArmValue $template['parameters'][$name]['defaultValue'] $analysisScope
+        $reason = Get-ArmUncertainty $Scope.Params[$name]
+        if ($null -ne $reason -and $reason -like '*synthetic deployment-time*') {
+            $Scope.ParameterMetadata[$name].isSynthetic = $true
+            $definition = $template['parameters'][$name]
+            if ($definition['type'] -notin @('secureString', 'secureObject') -and $null -eq (Get-ArmUncertainty $analysisScope.Params[$name])) {
+                $Scope.ParameterMetadata[$name]['analysisValue'] = $analysisScope.Params[$name]
+            }
+        }
     }
+    foreach ($name in $Scope.Params.Keys) {
+        $reason = Get-ArmUncertainty $Scope.Params[$name]
+        if ($null -ne $reason) {
+            $Scope.ParameterMetadata[$name].status = 'Unverified'
+            $Scope.ParameterMetadata[$name].reason = $reason
+            if ($reason -like '*synthetic deployment-time*') { $Scope.ParameterMetadata[$name].isSynthetic = $true }
+        }
+    }
+    $Scope.ParameterScopes[$Scope.Path] = @($Scope.ParameterMetadata.Values | Sort-Object { $_.name })
 }
 
 function New-ArmChildScope {
@@ -408,19 +506,21 @@ function New-ArmChildScope {
     $resourceGroupName = $Scope.ResourceGroupName
     if ($Definition.Contains('subscriptionId')) {
         $value = Resolve-ArmValue $Definition['subscriptionId'] $Scope
-        $subscriptionId = ConvertTo-ArmString $value
+        $subscriptionId = $value
     }
     if ($Definition.Contains('resourceGroup')) {
         $value = Resolve-ArmValue $Definition['resourceGroup'] $Scope
-        $resourceGroupName = ConvertTo-ArmString $value
+        $resourceGroupName = $value
     }
 
     $child = New-ArmScope -Template $properties['template'] -SubscriptionId $subscriptionId -ResourceGroupName $resourceGroupName `
-        -Location $Scope.Location -Path "$($Scope.Path)/$DeploymentName" -DeploymentName ([string]$DeploymentName) -SourceFile $Scope.SourceFile
+        -Location $Scope.Location -Path "$($Scope.Path)/$DeploymentName" -DeploymentName $DeploymentName -SourceFile $Scope.SourceFile `
+        -AnalysisTimestamp $Scope.AnalysisTimestamp
     $child.ConditionUnknown = $Scope.ConditionUnknown
     $child.NamingValues = $Scope.NamingValues
     $child.NamingRequests = $Scope.NamingRequests
     $child.ResolveDeterministicNames = $Scope.ResolveDeterministicNames
+    $child.ParameterScopes = $Scope.ParameterScopes
 
     # Bicep modules use inner expression scope: parameter values are evaluated in the parent scope.
     $supplied = [ordered]@{}
@@ -499,10 +599,10 @@ function Get-ArmDeploymentOutputs {
 function Get-ArmResourceId {
     param([hashtable]$Scope, $Definition, $Name)
 
-    if ($Name -is [ArmUnresolved]) { return $null }
+    if ($null -ne (Get-ArmUncertainty $Name)) { return $null }
     $names = ([string]$Name).Split('/')
 
-    if ($Definition.Contains('scope') -and $Definition['scope']) {
+    if ($Definition.Contains('scope')) {
         $scopeValue = $Definition['scope']
         $scopeId = $null
         $symbolKey = if ($scopeValue -is [string] -and -not $scopeValue.StartsWith('[')) { Find-ArmKey $Scope.Symbols $scopeValue } else { $null }
@@ -513,9 +613,12 @@ function Get-ArmResourceId {
         }
         else {
             $resolvedScope = Resolve-ArmValue $scopeValue $Scope
-            if ($resolvedScope -is [string]) {
+            if ($resolvedScope -is [string] -and $null -eq (Get-ArmUncertainty $resolvedScope)) {
                 if ($resolvedScope.StartsWith('/')) { $scopeId = $resolvedScope }
-                else { $scopeId = "/subscriptions/$($Scope.SubscriptionId)/resourceGroups/$($Scope.ResourceGroupName)/providers/$resolvedScope" }
+                elseif ($resolvedScope -match '^[\w-]+\.[\w.-]+/[^/]+/[^/]+(?:/[^/]+/[^/]+)*$' -and
+                    $null -eq (Get-ArmUncertainty $Scope.SubscriptionId) -and $null -eq (Get-ArmUncertainty $Scope.ResourceGroupName)) {
+                    $scopeId = "/subscriptions/$($Scope.SubscriptionId)/resourceGroups/$($Scope.ResourceGroupName)/providers/$resolvedScope"
+                }
             }
         }
         if ($null -eq $scopeId) { return $null }
@@ -526,7 +629,7 @@ function Get-ArmResourceId {
     $resourceGroupName = $Scope.ResourceGroupName
     if ($Definition.Contains('subscriptionId')) { $subscriptionId = Resolve-ArmValue $Definition['subscriptionId'] $Scope }
     if ($Definition.Contains('resourceGroup')) { $resourceGroupName = Resolve-ArmValue $Definition['resourceGroup'] $Scope }
-    if ($subscriptionId -is [ArmUnresolved] -or $resourceGroupName -is [ArmUnresolved]) { return $null }
+    if ($null -ne (Get-ArmUncertainty $subscriptionId) -or $null -ne (Get-ArmUncertainty $resourceGroupName)) { return $null }
     New-ArmResourceId -Prefix "/subscriptions/$subscriptionId/resourceGroups/$resourceGroupName" -Type $Definition['type'] -Names $names
 }
 
@@ -653,6 +756,14 @@ function Invoke-ArmFunction {
 
     foreach ($value in $values) { if ($value -is [ArmUnresolved]) { return $value } }
 
+    # Do not stringify/hash nested unresolved markers into apparently concrete names.
+    if ($lowerName -in @('string', 'format', 'guid', 'uniquestring', 'equals', 'indexof', 'lastindexof', 'min', 'max') -or
+        ($lowerName -eq 'concat' -and $values.Count -gt 0 -and -not (Test-ArmList $values[0])) -or
+        ($lowerName -eq 'contains' -and $values[0] -isnot [System.Collections.IDictionary])) {
+        $reason = Get-ArmUncertainty $values
+        if ($null -ne $reason) { return [ArmUnresolved]::new($reason) }
+    }
+
     if ($Scope.ResolveDeterministicNames -and $lowerName -in @('uniquestring', 'guid')) {
         $key = $lowerName + ':' + (ConvertTo-Json -InputObject @($values) -Compress -Depth 20)
         if ($Scope.NamingValues.ContainsKey($key)) { return $Scope.NamingValues[$key] }
@@ -679,6 +790,12 @@ function Invoke-ArmFunction {
     }
 
     switch ($lowerName) {
+        'utcnow' {
+            if (-not $Scope.EvaluatingParameterDefault) { return [ArmUnresolved]::new('utcNow() outside parameter default') }
+            if (-not $Scope.UseAnalysisTimestamp) { return [ArmUnresolved]::new('synthetic deployment-time utcNow() default') }
+            $format = if ($values.Count -gt 0) { [string]$values[0] } else { "yyyyMMdd'T'HHmmss'Z'" }
+            return $Scope.AnalysisTimestamp.UtcDateTime.ToString($format, [System.Globalization.CultureInfo]::InvariantCulture)
+        }
         'parameters' {
             $key = Find-ArmKey $Scope.Params ([string]$values[0])
             if ($null -eq $key) { return [ArmUnresolved]::new("parameter $($values[0])") }
@@ -788,7 +905,7 @@ function Invoke-ArmFunction {
         'string' { return (ConvertTo-ArmString $values[0]) }
         'json' {
             if ([string]$values[0] -eq 'null') { return $null }
-            $parsed = ConvertTo-ArmObject (ConvertFrom-Json -InputObject ([string]$values[0]))
+            $parsed = ConvertFrom-ArmJson ([string]$values[0])
             return , $parsed
         }
         'createarray' { return , [object[]]$values }
@@ -907,17 +1024,18 @@ function Invoke-ArmFunction {
             return , $result
         }
         'resourcegroup' {
+            $scopeReason = Get-ArmUncertainty @($Scope.SubscriptionId, $Scope.ResourceGroupName)
             return , [ordered]@{
                 name       = $Scope.ResourceGroupName
                 location   = $Scope.Location
-                id         = "/subscriptions/$($Scope.SubscriptionId)/resourceGroups/$($Scope.ResourceGroupName)"
+                id         = $(if ($null -ne $scopeReason) { [ArmUnresolved]::new('resource group scope') } else { "/subscriptions/$($Scope.SubscriptionId)/resourceGroups/$($Scope.ResourceGroupName)" })
                 properties = @{}
             }
         }
         'subscription' {
             return , [ordered]@{
                 subscriptionId = $Scope.SubscriptionId
-                id             = "/subscriptions/$($Scope.SubscriptionId)"
+                id             = $(if ($null -ne (Get-ArmUncertainty $Scope.SubscriptionId)) { [ArmUnresolved]::new('subscription scope') } else { "/subscriptions/$($Scope.SubscriptionId)" })
                 tenantId       = [ArmUnresolved]::new('tenantId')
             }
         }
@@ -947,10 +1065,12 @@ function Invoke-ArmFunction {
             $resourceGroupName = $Scope.ResourceGroupName
             if ($lowerName -eq 'subscriptionresourceid') {
                 if ($typeIndex -eq 1) { $subscriptionId = $values[0] }
+                if ($null -ne (Get-ArmUncertainty $subscriptionId)) { return [ArmUnresolved]::new('subscription scope') }
                 return (New-ArmResourceId -Prefix "/subscriptions/$subscriptionId" -Type $values[$typeIndex] -Names $names)
             }
             if ($typeIndex -eq 2) { $subscriptionId = $values[0]; $resourceGroupName = $values[1] }
             elseif ($typeIndex -eq 1) { $resourceGroupName = $values[0] }
+            if ($null -ne (Get-ArmUncertainty @($subscriptionId, $resourceGroupName))) { return [ArmUnresolved]::new('resource group scope') }
             return (New-ArmResourceId -Prefix "/subscriptions/$subscriptionId/resourceGroups/$resourceGroupName" -Type $values[$typeIndex] -Names $names)
         }
         'extensionresourceid' {
@@ -962,8 +1082,9 @@ function Invoke-ArmFunction {
             if ($null -eq $key) { return [ArmUnresolved]::new("resourceInfo $($values[0])") }
             $definition = $Scope.Symbols[$key]
             $resourceName = Resolve-ArmValue $definition['name'] $Scope
+            $resourceId = Get-ArmResourceId -Scope $Scope -Definition $definition -Name $resourceName
             return , [ordered]@{
-                id         = (Get-ArmResourceId -Scope $Scope -Definition $definition -Name $resourceName)
+                id         = $(if ($null -eq $resourceId) { [ArmUnresolved]::new("resource identity $($values[0])") } else { $resourceId })
                 name       = $resourceName
                 type       = $definition['type']
                 apiVersion = $definition['apiVersion']

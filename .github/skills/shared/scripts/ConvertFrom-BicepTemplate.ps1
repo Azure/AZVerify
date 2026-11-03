@@ -12,7 +12,14 @@ are emitted as '<unresolved: reason>'.
 .PARAMETER BicepFile
 Path to the main.bicep file to parse.
 .PARAMETER ParamFile
-Optional path to the .bicepparam parameter override file.
+Optional path to a .bicepparam or ARM JSON/JSONC parameter file.
+.PARAMETER ParameterOverride
+Effective explicit pipeline/deployment values. These override the parameter file,
+including when an explicit value contains an unexpanded $(...) pipeline macro.
+.PARAMETER AnalysisTimestamp
+UTC instant captured once per analysis (automatically if omitted). Deployment-only
+utcNow() defaults have synthetic analysis values in diagnostics.parameters, but
+remain unresolved in the effective model; they cannot verify resource identities.
 .PARAMETER Depth
 'shallow' resolves names, locations and tags only; 'standard' and 'deep' also resolve
 resource properties. Defaults to 'standard'.
@@ -42,6 +49,9 @@ param(
 
     [Parameter()]
     [hashtable]$ParameterOverride = @{},
+
+    [Parameter()]
+    [DateTimeOffset]$AnalysisTimestamp = [DateTimeOffset]::UtcNow,
 
     [Parameter()]
     [string]$SubscriptionId,
@@ -205,8 +215,8 @@ function Get-ParameterOverrides {
             throw 'Bicep CLI is unavailable for parameter compilation.'
         }
     }
-    elseif ([System.IO.Path]::GetExtension($ParameterFilePath) -ne '.json') {
-        throw 'Parameter files must be .bicepparam or ARM parameters .json documents.'
+    elseif ([System.IO.Path]::GetExtension($ParameterFilePath) -notin @('.json', '.jsonc')) {
+        throw 'Parameter files must be .bicepparam or ARM parameters .json/.jsonc documents.'
     }
 
     $content = Get-Content -LiteralPath $paramsJsonPath -Raw -ErrorAction Stop
@@ -214,22 +224,22 @@ function Get-ParameterOverrides {
         return @{}
     }
 
-    $document = ConvertFrom-Json -InputObject $content
-    if (-not $document.PSObject.Properties['parameters'] -or $document.parameters -isnot [pscustomobject]) {
+    $document = ConvertFrom-ArmJson $content
+    if (-not $document.Contains('parameters') -or $document['parameters'] -isnot [System.Collections.IDictionary]) {
         throw 'An ARM parameter document must contain a parameters object.'
     }
     $overrides = @{}
-    if ($document.PSObject.Properties['parameters'] -and $null -ne $document.parameters) {
-        foreach ($property in $document.parameters.PSObject.Properties) {
-            $entry = $property.Value
-            if ($entry -is [System.Management.Automation.PSCustomObject] -and $entry.PSObject.Properties['value']) {
-                $overrides[$property.Name] = $entry.value
+    if ($null -ne $document['parameters']) {
+        foreach ($name in $document['parameters'].Keys) {
+            $entry = $document['parameters'][$name]
+            if ($entry -is [System.Collections.IDictionary] -and $entry.Contains('value')) {
+                $overrides[$name] = $entry['value']
             }
-            elseif ($entry -is [pscustomobject] -and $entry.PSObject.Properties['reference']) {
-                $overrides[$property.Name] = [ArmUnresolved]::new("secure reference for parameter $($property.Name)")
+            elseif ($entry -is [System.Collections.IDictionary] -and $entry.Contains('reference')) {
+                $overrides[$name] = [ArmUnresolved]::new("secure reference for parameter $name")
             }
             else {
-                throw "Parameter '$($property.Name)' must contain value or reference."
+                throw "Parameter '$name' must contain value or reference."
             }
         }
     }
@@ -315,8 +325,9 @@ function Add-ArmResourceModel {
 
             $resourceType = [string]$definition['type']
             $resourceId = Get-ArmResourceId -Scope $iterationScope -Definition $definition -Name $name
+            $identityUnknown = $null -eq $resourceId
             if ($null -eq $resourceId) {
-                $resourceId = "/subscriptions/$($iterationScope.SubscriptionId)/resourceGroups/$($iterationScope.ResourceGroupName)/providers/$resourceType/$nameText"
+                $resourceId = "<unresolved: resource identity for $symbol (name or scope)>"
             }
 
             $isDeployment = $resourceType -eq 'Microsoft.Resources/deployments'
@@ -327,7 +338,7 @@ function Add-ArmResourceModel {
                 $properties = Resolve-ArmValue $definition['properties'] $iterationScope
             }
 
-            $Results.Add([PSCustomObject][ordered]@{
+            $modelResource = [ordered]@{
                     id            = [string]$resourceId
                     symbolicName  = $symbolicName
                     type          = $resourceType
@@ -336,17 +347,25 @@ function Add-ArmResourceModel {
                     sourceFile    = [string]$iterationScope.SourceFile
                     conditional   = ($hasCondition -or $iterationScope.ConditionUnknown)
                     existenceUnknown = ($conditionUnknown -or $iterationScope.ConditionUnknown -or ($definition.Contains('copy') -and $count -is [ArmUnresolved]))
+                    identityUnknown = $identityUnknown
                     parent        = $ParentSymbolicName
-                    resourceGroup = $iterationScope.ResourceGroupName
+                    resourceGroup = (ConvertTo-ArmPlainValue $iterationScope.ResourceGroupName)
                     location      = (ConvertTo-ArmPlainValue $location)
                     locationIsExplicit = $definition.Contains('location')
-                    properties    = if ($null -ne $properties) { ConvertTo-ArmPlainValue $properties } else { @{} }
-                    tags          = if ($null -ne $tags) { ConvertTo-ArmPlainValue $tags } else { @{} }
-                    sku           = if ($definition.Contains('sku')) { ConvertTo-ArmPlainValue (Resolve-ArmValue $definition['sku'] $iterationScope) } else { @{} }
-                    kind          = if ($definition.Contains('kind')) { ConvertTo-ArmPlainValue (Resolve-ArmValue $definition['kind'] $iterationScope) } else { $null }
-                    identity      = if ($definition.Contains('identity')) { ConvertTo-ArmPlainValue (Resolve-ArmValue $definition['identity'] $iterationScope) } else { @{} }
+                    properties    = @{}
+                    tags          = @{}
                     relationships = @()
-                })
+                }
+            if ($IncludeProperties -and -not $isDeployment -and $definition.Contains('properties')) {
+                $modelResource['properties'] = ConvertTo-ArmPlainValue $properties
+            }
+            if ($definition.Contains('tags')) { $modelResource['tags'] = ConvertTo-ArmPlainValue $tags }
+            foreach ($field in @('sku', 'kind', 'zones', 'identity')) {
+                if ($definition.Contains($field)) {
+                    $modelResource[$field] = ConvertTo-ArmPlainValue (Resolve-ArmValue $definition[$field] $iterationScope)
+                }
+            }
+            $Results.Add([PSCustomObject]$modelResource)
 
             # Pre-languageVersion-2.0 templates may nest child resources inline.
             if ($definition.Contains('resources') -and (Test-ArmList $definition['resources'])) {
@@ -360,7 +379,7 @@ function Add-ArmResourceModel {
             }
 
             if ($isDeployment -and $definition['properties'] -is [System.Collections.IDictionary] -and $definition['properties'].Contains('template')) {
-                $childScope = New-ArmChildScope -Scope $iterationScope -Definition $definition -DeploymentName $nameText
+                $childScope = New-ArmChildScope -Scope $iterationScope -Definition $definition -DeploymentName $name
                 $childScope.ConditionUnknown = $iterationScope.ConditionUnknown -or $conditionUnknown
                 $childUsesNames = $childScope.Template['resources'] -isnot [System.Collections.IDictionary]
                 Add-ArmResourceModel -Scope $childScope -Definitions $childScope.Symbols -Results $Results -IncludeProperties $IncludeProperties -UseNameAsSymbol $childUsesNames
@@ -398,9 +417,19 @@ try {
             Invoke-Exit -Code 1 -Message 'Bicep CLI is unavailable. Install Azure CLI with Bicep support or the standalone bicep CLI.'
         }
 
-        $template = ConvertTo-ArmObject (Get-Content -LiteralPath $armTemplatePath -Raw -ErrorAction Stop | ConvertFrom-Json)
+        $template = ConvertFrom-ArmJson (Get-Content -LiteralPath $armTemplatePath -Raw -ErrorAction Stop)
         $suppliedParameters = ConvertTo-ArmObject (Get-ParameterOverrides -ParameterFilePath $resolvedParamFile -WorkingDirectory $temporaryDirectory)
-        foreach ($key in $ParameterOverride.Keys) { $suppliedParameters[$key] = ConvertTo-ArmObject $ParameterOverride[$key] }
+        $parameterSources = @{}
+        foreach ($key in $suppliedParameters.Keys) { $parameterSources[$key] = 'parameterFile' }
+        foreach ($key in $ParameterOverride.Keys) {
+            $existingKey = Find-ArmKey $suppliedParameters $key
+            if ($null -ne $existingKey) { $suppliedParameters.Remove($existingKey) }
+            $suppliedParameters[$key] = ConvertTo-ArmObject $ParameterOverride[$key]
+            $parameterSources[$key] = 'explicitOverride'
+        }
+        foreach ($key in @($suppliedParameters.Keys)) {
+            $suppliedParameters[$key] = ConvertTo-ArmParameterValue $suppliedParameters[$key] $key
+        }
         $resourceGroupName = if ($ResourceGroup) { $ResourceGroup } else { Get-ResourceGroupNameFromTemplatePath -TemplatePath $resolvedBicepFile }
         $scopeSubscriptionId = if ($SubscriptionId) { $SubscriptionId } else { '<subscription-id>' }
         $sourceRoot = Split-Path -Path $resolvedBicepFile -Parent
@@ -418,10 +447,10 @@ try {
         if ($null -ne $locationKey -and $suppliedParameters[$locationKey] -is [string]) {
             $scopeLocation = $suppliedParameters[$locationKey]
         }
-        elseif ($template['parameters'] -is [System.Collections.IDictionary] -and $template['parameters'].Contains('location')) {
+        elseif ($null -eq $locationKey -and $template['parameters'] -is [System.Collections.IDictionary] -and $template['parameters'].Contains('location')) {
             $locationDefault = $template['parameters']['location']['defaultValue']
             if ($locationDefault -is [string] -and -not $locationDefault.StartsWith('[')) {
-                $scopeLocation = $locationDefault
+                $scopeLocation = ConvertTo-ArmParameterValue $locationDefault 'location'
             }
         }
 
@@ -437,11 +466,11 @@ try {
         for ($pass = 0; $pass -lt 5; $pass++) {
             # Fresh scope-local variable and module-output caches must not retain pending names.
             $rootScope = New-ArmScope -Template $template -SubscriptionId $scopeSubscriptionId -ResourceGroupName $resourceGroupName `
-                -Location $scopeLocation -Path '' -DeploymentName 'main' -SourceFile $sourceFile
+                -Location $scopeLocation -Path '' -DeploymentName 'main' -SourceFile $sourceFile -AnalysisTimestamp $AnalysisTimestamp
             $rootScope.NamingValues = $namingValues
             $rootScope.NamingRequests = @{}
             $rootScope.ResolveDeterministicNames = $ResolveDeterministicNames.IsPresent
-            Set-ArmScopeParameters -Scope $rootScope -Supplied $suppliedParameters
+            Set-ArmScopeParameters -Scope $rootScope -Supplied $suppliedParameters -Sources $parameterSources
             $resources = New-Object System.Collections.Generic.List[object]
             $rootUsesNames = $template['resources'] -isnot [System.Collections.IDictionary]
             Add-ArmResourceModel -Scope $rootScope -Definitions $rootScope.Symbols -Results $resources `
@@ -464,7 +493,7 @@ try {
         if ($MaskSecrets) {
             foreach ($resource in $resources) {
                 foreach ($bag in @('properties', 'identity', 'tags')) {
-                    $resource.$bag = Protect-ArmValue $resource.$bag
+                    if ($resource.PSObject.Properties[$bag]) { $resource.$bag = Protect-ArmValue $resource.$bag }
                 }
             }
         }
@@ -501,6 +530,13 @@ try {
                 unresolvedNames = $unresolvedNames.Count
                 missingParameters = @($rootScope.Params.Keys | Where-Object { $rootScope.Params[$_] -is [ArmUnresolved] })
                 namingBatches = $pass
+                analysisTimestamp = $AnalysisTimestamp.ToUniversalTime().ToString('o', [System.Globalization.CultureInfo]::InvariantCulture)
+                parameters = @($rootScope.ParameterMetadata.Values | Sort-Object { $_.name })
+                parameterScopes = @($rootScope.ParameterScopes.Keys | Sort-Object | ForEach-Object {
+                    [ordered]@{ scope = $_; parameters = $rootScope.ParameterScopes[$_] }
+                })
+                unresolvedParameters = @($rootScope.ParameterMetadata.Values | Where-Object { $_.status -eq 'Unverified' } | ForEach-Object { $_.name } | Sort-Object)
+                unresolvedResourceIds = @($resources | Where-Object { $_.identityUnknown }).Count
             }
         }
 

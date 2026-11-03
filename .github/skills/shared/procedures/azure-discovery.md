@@ -50,22 +50,23 @@ pwsh .github/skills/shared/scripts/Get-AzureResourceModel.ps1 -SubscriptionId <s
 ## Prerequisites
 
 - Run the authentication gate first — see `.github/skills/shared/procedures/azure-authentication.md`
-- Live mode requires Azure CLI (`az`) on PATH **or** an authenticated Az PowerShell session with the `Az.Resources` module; Azure CLI is preferred when both are available
+- Legacy live mode requires Azure CLI (`az`) on PATH **or** an authenticated Az PowerShell session with the `Az.Resources` module; Azure CLI is preferred when both are available. Expected-aware `-ExpectedModel` mode requires Azure CLI and must not silently switch to Az PowerShell or MCP.
 - Offline mode (`-FromJson`) requires only the captured JSON file
 
 ## Notes
 
-- Drift-detection skills should invoke with `-Enrich -Mode diagram|bicep` so the returned model is already enriched and filtered — no separate `Select-AzureResources.ps1` call is needed.
+- Drift-detection skills should invoke with `-Enrich -Mode diagram|bicep` for legacy enrichment so the returned model is already enriched and filtered — no separate `Select-AzureResources.ps1` call is needed.
 - Enrichment issues one detail call per resource; expect proportional runtime on large scopes. Progress is reported on stderr.
 - Subscription-level discovery can be noisy — warn the user before comparing an entire subscription.
-- Bicep drift paths use `-ExpectedModel`, not legacy enrichment. Inventory confirms existence separately from configuration. Detail GETs use the declared API version, with provider-version fallback when necessary. Confirmed 404 resource absence is `Absent`; 403, exhausted 429, and unavailable reads are `Unknown` existence unless inventory already established `Found`. Projected property values become `unknown` and read errors appear in `issues`; tokens/raw responses are not persisted. An inventory/authentication failure remains a hard failure.
+- Bicep drift paths use `-ExpectedModel`, not legacy enrichment. Inventory confirms existence separately from configuration. Follow every pagination `nextLink` for resource inventory and child-collection enumeration. Use declared `childCollections` metadata to discover child resources not declared in the template; this currently includes `Microsoft.Insights/privateLinkScopes/scopedResources` (AMPLS scoped resources). Do not assume the standard resource list includes all such children.
+- Inventory is not guaranteed exhaustive. Any failed page or child-collection request, unsupported scope/type, or other enumeration gap must be recorded in `issues` and make the result explicitly **incomplete**; retain usable partial results rather than representing them as complete. Authentication failure or inability to obtain any usable inventory is a hard stop. Detail GETs use the declared API version, with provider-version fallback when necessary. Confirmed 404 resource absence is `Absent`; 403, exhausted 429, and unavailable reads are `Unknown` existence unless inventory already established `Found`. Projected property values become `unknown` and read errors appear in `issues`; tokens/raw responses are not persisted.
 - If `pwsh`/`powershell.exe` or the script is unavailable, use the inline fallback below.
 
 ## Script Unavailable — Inline Fallback
 
 If `pwsh`/`powershell.exe` or the script cannot run, build the Azure resource model directly:
 
-1. **List resources in scope**: use `mcp_azure_group_resource_list` for a resource group scope (or `mcp_azure_subscription_list` + a subscription-wide listing), falling back to `az resource list --resource-group <rg-name> -o json`.
+1. **List resources in scope**: use `mcp_azure_group_resource_list` for a resource group scope (or `mcp_azure_subscription_list` + a subscription-wide listing), falling back to `az resource list --resource-group <rg-name> -o json`. Ensure all pages are retrieved. Also enumerate child collections listed in `childCollections` metadata, currently including AMPLS `Microsoft.Insights/privateLinkScopes/scopedResources`, and follow every returned `nextLink`.
 2. **Build model entries**: for each discovered resource create:
    ```json
    {
@@ -81,4 +82,4 @@ If `pwsh`/`powershell.exe` or the script cannot run, build the Azure resource mo
 3. **Enrich** (when property-level detail is needed): for each resource, look up its type in `.github/skills/shared/data/azure-property-paths.json` and retrieve full properties using the listed MCP tool (primary) or `az` CLI fallback command; extract each tracked property via its ARM JSON path into the `properties` bag.
 4. **Derive relationships**: child resources get a `contains` relationship from their parent (derived from resource id segments); resource-id references inside properties become `connects`, `depends`, or `secures` edges as appropriate.
 5. **Filter**: apply the inline fallback in `.github/skills/shared/procedures/resource-filtering.md` for the requested mode (`diagram` or `bicep`).
-6. **Emit** the resulting resource model JSON conforming to `.github/skills/shared/azure-resource-model.md`. Never include secret values — mask any credential-like property values.
+6. **Emit** the resulting resource model JSON conforming to `.github/skills/shared/azure-resource-model.md`. Never include secret values — mask any credential-like property values. Record any failed inventory page, child-collection request, unsupported scope/type, or other enumeration gap as an issue and mark the report incomplete; do not describe partial inventory as exhaustive.

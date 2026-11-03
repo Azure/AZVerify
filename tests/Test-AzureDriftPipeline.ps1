@@ -365,6 +365,7 @@ if ($OrchestratorChild) {
     $output = Join-Path $WorkRoot 'fast-output'
     & $orchestrator -BicepFile (Join-Path $WorkRoot 'fixture.bicep') -ResourceGroup $resourceGroup `
         -SubscriptionId $subscriptionId -Backend $ChildBackend -OutputDirectory $output `
+        -AnalysisTimestamp '2026-01-02T03:04:05Z' `
         -ThrottleLimit 1 -MaxRetry 1 -KeepIntermediate
     exit $LASTEXITCODE
 }
@@ -422,6 +423,8 @@ try {
     $script:assertions++
 
     $summary = Read-JsonFile (Join-Path $fastOutput 'drift-summary.json')
+    Assert-Equal ([datetimeoffset]$summary.inputProvenance.analysisTimestamp).UtcDateTime `
+        ([datetimeoffset]'2026-01-02T03:04:05Z').UtcDateTime 'Orchestrator preserves the fixed analysis timestamp'
     $comparison = Read-JsonFile $manual.Comparison
     $counts = @{
         create = @($comparison.matches | Where-Object { $_.status -eq 'Bicep Only' }).Count
@@ -767,6 +770,35 @@ try {
     $backendExitCode = $LASTEXITCODE
     Assert-Equal $backendExitCode 1 'AzPowerShell backend is rejected'
     Assert-Equal (Test-Path -LiteralPath $global:azCallLog) $false 'AzPowerShell rejection occurs before Azure discovery/authentication'
+
+    $coverageRoot = Join-Path $workRoot 'child-coverage'
+    $null = New-Item -ItemType Directory -Path $coverageRoot
+    Initialize-Mocks -Root $coverageRoot
+    Set-Content -LiteralPath (Join-Path $coverageRoot 'fixture.bicep') -Value '// Empty deployment with an existing AMPLS parent in Azure.'
+    Write-JsonFile @{
+        '$schema' = 'https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#'
+        contentVersion = '1.0.0.0'; parameters = @{}; resources = @()
+    } $global:compiledTemplatePath
+    $ampls = New-InventoryResource 'Microsoft.Insights/privateLinkScopes' 'existing-scope'
+    Write-JsonFile @($ampls) $global:inventoryPath
+    Write-JsonFile @{
+        "$($ampls.id)/scopedResources" = @{
+            status = 'Unavailable'; httpStatus = 403; errorCode = 'AuthorizationFailed'
+        }
+    } $global:armResponsePath
+    $sourceBefore = Get-Content -LiteralPath (Join-Path $coverageRoot 'fixture.bicep') -Raw
+    $coverageOutput = & pwsh -NoProfile -File $PSCommandPath -OrchestratorChild -WorkRoot $coverageRoot 2>&1
+    Assert-Equal $LASTEXITCODE 2 "Failed undeclared child collection makes otherwise successful detection INCOMPLETE: $coverageOutput"
+    $coverageSummary = Read-JsonFile (Join-Path $coverageRoot 'fast-output/drift-summary.json')
+    Assert-Equal $coverageSummary.status 'INCOMPLETE' 'Incomplete child coverage must never report fully in sync'
+    $coverageReport = Get-Content -LiteralPath (Join-Path $coverageRoot 'fast-output/drift-report.md') -Raw
+    Assert-True ($coverageReport.Contains('AuthorizationFailed')) 'Report must explain collection coverage failure'
+    Assert-True ($coverageReport.IndexOf('## Not in template') -lt $coverageReport.IndexOf('## Unverified')) 'Azure-only findings precede unverified coverage details'
+    Assert-True ($coverageReport.Contains('Build version: unknown')) 'Report must disclose build provenance uncertainty'
+    Assert-True ($coverageReport.Contains('No infrastructure edits')) 'Report must preserve the approval gate'
+    Assert-Equal (Get-Content -LiteralPath (Join-Path $coverageRoot 'fixture.bicep') -Raw) $sourceBefore 'Detection must not edit infrastructure'
+    $coverageCalls = @(Get-Content -LiteralPath $global:azCallLog)
+    Assert-True (@($coverageCalls | Where-Object { $_ -match '\b(what-if|create|update|delete|validate)\b' }).Count -eq 0) 'Detection must not invoke what-if, deployment validation, or mutation'
 
     Write-Output "PASS: $script:assertions assertions (mocked offline Azure drift pipeline)."
 }

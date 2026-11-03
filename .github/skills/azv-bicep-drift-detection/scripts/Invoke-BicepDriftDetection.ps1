@@ -15,6 +15,16 @@ Path to the Bicep template (main.bicep).
 Optional .bicepparam or ARM JSON parameter file.
 .PARAMETER ParameterOverride
 Optional hashtable of parameter values (for example pipeline variables).
+.PARAMETER PipelineFile
+Pipeline reference for provenance only; pass its effective values using ParameterOverride.
+.PARAMETER DeploymentMode
+Deployment mode read from the selected pipeline. Unknown unless supplied.
+.PARAMETER BuildVersion
+Version of the template artifact being compared. Unverified unless supplied.
+.PARAMETER ParameterSource
+Whether inputs are explicit, current pipeline values, or a historical fallback.
+.PARAMETER AnalysisTimestamp
+Optional fixed timestamp for analysis-only utcNow defaults; never verifies deployed identities.
 .PARAMETER ResourceGroup
 Target resource group. Never inferred from folder names.
 .PARAMETER SubscriptionId
@@ -43,6 +53,11 @@ param(
     [Parameter(Mandatory)][ValidateNotNullOrEmpty()][string]$BicepFile,
     [string]$ParamFile,
     [hashtable]$ParameterOverride = @{},
+    [string]$PipelineFile,
+    [ValidateSet('Incremental', 'Complete', 'Unknown')][string]$DeploymentMode = 'Unknown',
+    [string]$BuildVersion,
+    [ValidateSet('ExplicitInput', 'CurrentPipeline', 'HistoricalFallback')][string]$ParameterSource = 'ExplicitInput',
+    [datetimeoffset]$AnalysisTimestamp,
     [Parameter(Mandatory)][ValidateNotNullOrEmpty()][string]$ResourceGroup,
     [Parameter(Mandatory)][ValidatePattern('^[0-9a-fA-F-]{36}$')][string]$SubscriptionId,
     [string]$Location,
@@ -56,6 +71,7 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 $shared = Join-Path $PSScriptRoot '..\..\shared\scripts'
+. (Join-Path $shared '_ResourceProjection.ps1')
 $timer = [System.Diagnostics.Stopwatch]::StartNew()
 $null = New-Item -ItemType Directory -Path $OutputDirectory -Force
 $paths = @{
@@ -74,10 +90,30 @@ function Stop-Run {
     exit 1
 }
 
+function Format-ReportValue {
+    param([AllowNull()]$Value)
+    $text = ConvertTo-Json -InputObject $Value -Compress -Depth 100
+    return ($text -replace '\|', '&#124;' -replace '`', '&#96;' -replace '[\r\n]', ' ')
+}
+
+function Add-PropertyReport {
+    param($Entry)
+    [void]$report.AppendLine("### ``$($Entry.resourceA.id)``")
+    [void]$report.AppendLine('| Property | Azure value | Bicep value | Source | Interpretation / decisions |')
+    [void]$report.AppendLine('|---|---|---|---|---|')
+    foreach ($drift in @($Entry.propertyComparison.drifts)) {
+        $sources = Get-ModelMember $Entry.resourceA 'propertySources'
+        $source = Get-ModelMember $sources $drift.property
+        if (-not $source) { $source = Get-ModelMember $Entry.resourceA 'sourceFile' }
+        if (-not $source) { $source = $BicepFile }
+        [void]$report.AppendLine("| ``$($drift.property)`` | $(Format-ReportValue $drift.valueB) | $(Format-ReportValue $drift.valueA) | $(Format-ReportValue $source) | Confirmed difference. Adopt Azure / reset Azure / skip. |")
+    }
+}
+
 try {
     if ($Backend -eq 'AzPowerShell') { Stop-Run 'Expected-aware drift detection requires Azure CLI authentication. Use az login and -Backend AzureCLI.' }
     Write-Progress -Activity 'Bicep drift detection' -Status 'Checking authentication'
-    & (Join-Path $shared 'Test-AzureAuth.ps1') -Backend AzureCLI -SubscriptionId $SubscriptionId -OutFile $paths.Auth 2>$null
+    & (Join-Path $shared 'Test-AzureAuth.ps1') -Backend AzureCLI -SubscriptionId $SubscriptionId -OutFile $paths.Auth
     if ($LASTEXITCODE -ne 0) { Stop-Run 'Not authenticated to Azure for the requested subscription. Sign in (az login) and retry.' }
 
     $groupJson = az group show --name $ResourceGroup --subscription $SubscriptionId --output json 2>$null
@@ -94,22 +130,23 @@ try {
         ResolveDeterministicNames = $true; MaskSecrets = $true; ParameterOverride = $ParameterOverride; OutFile = $paths.Expected
     }
     if ($ParamFile) { $parseArguments.ParamFile = $ParamFile }
-    & (Join-Path $shared 'ConvertFrom-BicepTemplate.ps1') @parseArguments 2>$null 6>$null
+    if ($PSBoundParameters.ContainsKey('AnalysisTimestamp')) { $parseArguments.AnalysisTimestamp = $AnalysisTimestamp }
+    & (Join-Path $shared 'ConvertFrom-BicepTemplate.ps1') @parseArguments 6>$null
     if ($LASTEXITCODE -ne 0) { Stop-Run 'Bicep compilation or parameter evaluation failed. Run the parser directly for details.' }
     $expected = Get-Content -LiteralPath $paths.Expected -Raw | ConvertFrom-Json
 
-    & (Join-Path $shared 'Select-AzureResources.ps1') -Mode bicep -InputFile $paths.Expected -OutFile $paths.Filtered 2>$null
+    & (Join-Path $shared 'Select-AzureResources.ps1') -Mode bicep -InputFile $paths.Expected -OutFile $paths.Filtered
     if ($LASTEXITCODE -ne 0) { Stop-Run 'Expected-resource filtering failed.' }
 
     Write-Progress -Activity 'Bicep drift detection' -Status 'Reading Azure (read-only)'
     & (Join-Path $shared 'Get-AzureResourceModel.ps1') -ResourceGroup $ResourceGroup -SubscriptionId $SubscriptionId `
-        -ExpectedModel $paths.Filtered -Mode bicep -ManagementEndpoint $managementEndpoint -ThrottleLimit $ThrottleLimit -MaxRetry $MaxRetry -OutFile $paths.Actual 2>$null
+        -ExpectedModel $paths.Filtered -Mode bicep -ManagementEndpoint $managementEndpoint -ThrottleLimit $ThrottleLimit -MaxRetry $MaxRetry -OutFile $paths.Actual
     if ($LASTEXITCODE -ne 0) { Stop-Run 'Azure discovery failed (inventory could not be read).' }
     $actual = Get-Content -LiteralPath $paths.Actual -Raw | ConvertFrom-Json
 
     Write-Progress -Activity 'Bicep drift detection' -Status 'Comparing'
     & (Join-Path $shared 'Compare-ResourceModels.ps1') -ModelA $paths.Filtered -ModelB $paths.Actual -LabelA 'Bicep' -LabelB 'Azure' `
-        -AzureIdentity -TrackedProperties -OutFile $paths.Compare 2>$null
+        -AzureIdentity -TrackedProperties -OutFile $paths.Compare
     if ($LASTEXITCODE -ne 0) { Stop-Run 'Comparison failed.' }
     $comparison = Get-Content -LiteralPath $paths.Compare -Raw | ConvertFrom-Json
 }
@@ -147,10 +184,14 @@ foreach ($entry in @($comparison.matches)) {
 
 $unresolvedNames = if ($diagnostics) { [int]$diagnostics.unresolvedNames } else { 0 }
 $missingParameters = @(if ($diagnostics) { $diagnostics.missingParameters })
+$unresolvedParameters = @(if ($diagnostics -and $diagnostics.PSObject.Properties['unresolvedParameters']) { $diagnostics.unresolvedParameters })
+$unresolvedIds = if ($diagnostics -and $diagnostics.PSObject.Properties['unresolvedResourceIds']) { [int]$diagnostics.unresolvedResourceIds } else { 0 }
 $incompleteReasons = [System.Collections.Generic.List[string]]::new()
 if ($unresolvedNames -gt 0) { $incompleteReasons.Add("$unresolvedNames expected resource name(s) could not be resolved") }
 if ($unresolved.Count -gt 0) { $incompleteReasons.Add("$($unresolved.Count) resource comparison(s) could not be verified") }
 if ($missingParameters.Count -gt 0) { $incompleteReasons.Add("parameters without values: $($missingParameters -join ', ')") }
+if ($unresolvedParameters.Count -gt 0) { $incompleteReasons.Add("unresolved parameter inputs: $($unresolvedParameters -join ', ')") }
+if ($unresolvedIds -gt 0) { $incompleteReasons.Add("$unresolvedIds expected resource identity/identities could not be verified") }
 if ($issues.Count -gt 0) { $incompleteReasons.Add("$($issues.Count) Azure read(s) unavailable") }
 if ($uncertainCount -gt 0) { $incompleteReasons.Add("$uncertainCount property value(s) unknown or unresolved") }
 if ($noComparable -gt 0) { $incompleteReasons.Add("$noComparable resource(s) have no comparable expected properties") }
@@ -160,6 +201,17 @@ $report = [System.Text.StringBuilder]::new()
 [void]$report.AppendLine("# Bicep drift report ($status)")
 [void]$report.AppendLine()
 [void]$report.AppendLine("Scope: subscription ``$SubscriptionId``, resource group ``$ResourceGroup``. Read-only run.")
+[void]$report.AppendLine("Template: ``$BicepFile``. Parameters: ``$ParamFile``. Explicit override names: ``$(@($ParameterOverride.Keys | Sort-Object) -join ', ')``.")
+[void]$report.AppendLine("Input provenance: **$ParameterSource**. Pipeline reference: ``$PipelineFile`` (not evaluated by this script). Deployment mode: **$DeploymentMode**.")
+$versionText = if ($BuildVersion) { $BuildVersion } else { 'unknown; local template is not verified as the deployed build' }
+[void]$report.AppendLine("Build version: $versionText.")
+if ($diagnostics -and $diagnostics.PSObject.Properties['analysisTimestamp']) {
+    [void]$report.AppendLine("Analysis timestamp: ``$($diagnostics.analysisTimestamp)``. utcNow defaults are synthetic analysis values, not verified deployment values.")
+}
+if ($ParameterSource -eq 'HistoricalFallback') {
+    [void]$report.AppendLine('> Historical deployment parameters are a fallback, not proof of current pipeline inputs.')
+}
+[void]$report.AppendLine('What-if is optional, separate from this report, and was not invoked. No Bicep or Azure changes are authorized by selecting a resource for investigation.')
 if ($status -eq 'INCOMPLETE') {
     [void]$report.AppendLine()
     [void]$report.AppendLine('> **INCOMPLETE** - results below exclude anything that could not be verified:')
@@ -175,47 +227,95 @@ if ($status -eq 'INCOMPLETE') {
 [void]$report.AppendLine("| No comparable properties (existence only) | $noComparable |")
 [void]$report.AppendLine("| No change | $noChange |")
 
-if ($noComparable -gt 0) {
-    [void]$report.AppendLine(); [void]$report.AppendLine('## No Comparable Properties')
-    foreach ($entry in @($comparison.matches | Where-Object {
-        $_.status -in @('In Sync', 'In Sync (name differs)') -and
-        (-not $_.PSObject.Properties['propertyComparison'] -or $_.propertyComparison.status -eq 'No Comparable Properties')
-    })) {
-        [void]$report.AppendLine("- ``$($entry.resourceA.type)`` ``$($entry.resourceA.name)``: configuration was not assessed")
-    }
-}
-
-if ($create.Count -gt 0) {
-    [void]$report.AppendLine(); [void]$report.AppendLine('## Create')
-    foreach ($resource in $create) { [void]$report.AppendLine("- ``$($resource.type)`` ``$($resource.name)``") }
-}
-if ($modify.Count -gt 0) {
-    [void]$report.AppendLine(); [void]$report.AppendLine('## Modify')
-    foreach ($entry in $modify) {
-        [void]$report.AppendLine("- ``$($entry.resourceA.type)`` ``$($entry.resourceA.name)``")
-        foreach ($drift in @($entry.propertyComparison.drifts)) {
-            [void]$report.AppendLine("  - $($drift.property): Bicep ``$($drift | Select-Object -ExpandProperty valueA | ConvertTo-Json -Compress -Depth 5)`` vs Azure ``$($drift | Select-Object -ExpandProperty valueB | ConvertTo-Json -Compress -Depth 5)``")
-        }
-    }
-}
 if ($extra.Count -gt 0) {
     [void]$report.AppendLine(); [void]$report.AppendLine('## Not in template (in Azure only)')
-    [void]$report.AppendLine('These may be unmanaged, created by Azure automatically, or child resources outside this template. Review before deleting anything.')
-    foreach ($resource in $extra) { [void]$report.AppendLine("- ``$($resource.type)`` ``$($resource.name)``") }
+    [void]$report.AppendLine('Absent from this deployment does not mean unmanaged by any IaC. Check other workload pipelines before centralizing ownership. These are not implied deletions.')
+    [void]$report.AppendLine('| Resource identity | Azure value | Bicep | Interpretation / decisions |')
+    [void]$report.AppendLine('|---|---|---|---|')
+    foreach ($resource in $extra) {
+        $interpretation = if ($resource.type -eq 'Microsoft.Network/networkInterfaces') { 'May be an Azure-created private-endpoint dependency; verify its owner before adoption or removal.' } else { 'Ownership unverified.' }
+        [void]$report.AppendLine("| ``$($resource.id)`` | $(Format-ReportValue $resource.properties) | Omitted from ``$BicepFile`` | $interpretation Adopt / investigate / skip. |")
+    }
+}
+if ($modify.Count -gt 0) {
+    [void]$report.AppendLine(); [void]$report.AppendLine('## Modify (in both, with different configuration)')
+    foreach ($entry in $modify) { Add-PropertyReport $entry }
 }
 if ($unresolved.Count -gt 0 -or $issues.Count -gt 0) {
     [void]$report.AppendLine(); [void]$report.AppendLine('## Unverified')
     foreach ($resource in $unresolved) {
         $resourceIssues = @($issues | Where-Object { $_.resourceId -eq $resource.id })
         $reason = if ($resourceIssues.Count -gt 0) { @($resourceIssues | ForEach-Object { $_.errorCode }) -join ', ' } else { 'identity, existence or configuration could not be verified' }
-        [void]$report.AppendLine("- ``$($resource.type)`` ``$($resource.name)``: $reason")
+        $templateIssues = Get-ModelMember $resource 'templateIssues'
+        if ($templateIssues) { $reason += "; conflicting declarations: $($templateIssues -join ', ')" }
+        [void]$report.AppendLine("- ``$($resource.id)``: $reason. Resolve inputs/permissions or investigate; no adoption until verified.")
         foreach ($entry in @($comparison.matches | Where-Object { $_.resourceA -and $_.resourceA.id -eq $resource.id -and $_.PSObject.Properties['propertyComparison'] })) {
-            foreach ($drift in @($entry.propertyComparison.drifts)) {
-                [void]$report.AppendLine("  - Confirmed drift in ``$($drift.property)``: Bicep ``$(ConvertTo-Json -InputObject $drift.valueA -Compress -Depth 5)`` vs Azure ``$(ConvertTo-Json -InputObject $drift.valueB -Compress -Depth 5)`` (other expectations remain unverified)")
+            if (@($entry.propertyComparison.drifts).Count -gt 0) { Add-PropertyReport $entry }
+            foreach ($uncertainty in @($entry.propertyComparison.uncertainties)) {
+                [void]$report.AppendLine("  - ``$($uncertainty.property)``: $($uncertainty.status)")
             }
         }
     }
+    foreach ($issue in $issues) {
+        [void]$report.AppendLine("- Coverage/read issue for ``$($issue.resourceId)``: $($issue.errorCode)")
+    }
 }
+if ($create.Count -gt 0) {
+    [void]$report.AppendLine(); [void]$report.AppendLine('## Create')
+    foreach ($resource in $create) { [void]$report.AppendLine("- ``$($resource.id)``: absent from Azure. Create in Azure / remove from Bicep / skip (approval required).") }
+}
+if ($noComparable -gt 0) {
+    [void]$report.AppendLine(); [void]$report.AppendLine('## No Comparable Properties')
+    foreach ($entry in @($comparison.matches | Where-Object {
+        $_.status -in @('In Sync', 'In Sync (name differs)') -and
+        (-not $_.PSObject.Properties['propertyComparison'] -or $_.propertyComparison.status -eq 'No Comparable Properties')
+    })) {
+        [void]$report.AppendLine("- ``$($entry.resourceA.id)``: existence only; configuration was not assessed")
+    }
+}
+$omissions = @($comparison.matches | Where-Object {
+    $_.PSObject.Properties['propertyComparison'] -and @($_.propertyComparison.omittedConfiguration).Count -gt 0
+})
+if ($omissions.Count -gt 0) {
+    [void]$report.AppendLine(); [void]$report.AppendLine('## Azure configuration omitted from Bicep (not confirmed drift)')
+    [void]$report.AppendLine('These observations may be provider defaults/read-only state or configuration owned elsewhere. Investigate before adoption.')
+    foreach ($entry in $omissions) {
+        [void]$report.AppendLine("### ``$($entry.resourceA.id)``")
+        foreach ($item in $entry.propertyComparison.omittedConfiguration) {
+            [void]$report.AppendLine("- ``$($item.property)``: Azure $(Format-ReportValue $item.valueB); omitted from ``$BicepFile``. Investigate / adopt explicitly / skip.")
+        }
+    }
+}
+$providerState = @($comparison.matches | Where-Object {
+    $_.PSObject.Properties['propertyComparison'] -and @($_.propertyComparison.providerMaintained).Count -gt 0
+})
+if ($providerState.Count -gt 0) {
+    [void]$report.AppendLine(); [void]$report.AppendLine('<details><summary>Provider-maintained state (not deployable intent)</summary>')
+    foreach ($entry in $providerState) {
+        foreach ($item in $entry.propertyComparison.providerMaintained) {
+            [void]$report.AppendLine("- ``$($entry.resourceA.id)`` / ``$($item.property)``: $(Format-ReportValue $item.valueB)")
+        }
+    }
+    [void]$report.AppendLine('</details>')
+}
+$parameterScopes = Get-ModelMember $diagnostics 'parameterScopes'
+if ($null -ne $parameterScopes -and @($parameterScopes).Count -gt 0) {
+    [void]$report.AppendLine(); [void]$report.AppendLine('<details><summary>Effective parameter sources and unresolved expectations</summary>')
+    [void]$report.AppendLine('| Scope | Parameter | Source | Status | Reason |')
+    [void]$report.AppendLine('|---|---|---|---|---|')
+    foreach ($scope in $parameterScopes) {
+        foreach ($parameter in $scope.parameters) {
+            [void]$report.AppendLine("| $(Format-ReportValue $scope.scope) | ``$($parameter.name)`` | $($parameter.source) | $($parameter.status) | $(Format-ReportValue $parameter.reason) |")
+        }
+    }
+    [void]$report.AppendLine('</details>')
+}
+[void]$report.AppendLine(); [void]$report.AppendLine('<details><summary>Matching resources (explicit expectations only)</summary>')
+foreach ($entry in @($comparison.matches | Where-Object {
+    $_.PSObject.Properties['propertyComparison'] -and $_.propertyComparison.status -eq 'All Properties Match'
+})) { [void]$report.AppendLine("- ``$($entry.resourceA.id)``") }
+[void]$report.AppendLine('</details>')
+[void]$report.AppendLine(); [void]$report.AppendLine('Inspect -> report -> choose per resource/property -> edit. No infrastructure edits or deletion commands without explicit approval.')
 $elapsed = [Math]::Round($timer.Elapsed.TotalSeconds, 1)
 $requestText = if ($metrics) { ", $($metrics.armRequests) ARM request(s), $($metrics.retries) retries" } else { '' }
 [void]$report.AppendLine(); [void]$report.AppendLine("_Elapsed ${elapsed}s$requestText._")
@@ -226,6 +326,14 @@ $summary = [ordered]@{
     create = $create.Count; modify = $modify.Count; notInTemplate = $extra.Count
     unverified = $unresolved.Count; noComparableProperties = $noComparable; noChange = $noChange
     incompleteReasons = @($incompleteReasons); elapsedSeconds = $elapsed; metrics = $metrics
+    inputProvenance = @{
+        template = $BicepFile; parameterFile = $ParamFile; overrideNames = @($ParameterOverride.Keys)
+        parameterSource = $ParameterSource; pipelineFile = $PipelineFile; deploymentMode = $DeploymentMode
+        buildVersion = $BuildVersion; deployedBuildVerified = $false
+        parameters = Get-ModelMember $diagnostics 'parameters'
+        parameterScopes = Get-ModelMember $diagnostics 'parameterScopes'
+        analysisTimestamp = Get-ModelMember $diagnostics 'analysisTimestamp'
+    }
 }
 $summary | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath $paths.Summary -Encoding utf8
 
